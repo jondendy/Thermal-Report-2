@@ -1,0 +1,18 @@
+# Survey data and photos are private (GDPR) - never commit them
+data/
+reports/
+Images/
+uploads/
+*.jpg
+*.jpeg
+!docs/**/*.jpg
+
+# Secrets / environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+venv/
+.venv/
