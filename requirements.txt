@@ -1,0 +1,21 @@
+# Thermal Report - Python dependencies
+numpy>=1.24
+scipy>=1.10
+pillow>=10.0
+matplotlib>=3.7
+flask>=3.0
+requests>=2.31
+
+# FLIR extraction. PINNED on purpose: 1.3.0 reads the radiometric data with exiftool and
+# needs no network. Versions 1.5.x download a DJI SDK on first use, which fails offline and
+# on read-only hosts (e.g. Cloud Run). Upstream: github.com/nationaldronesau/FlirImageExtractor
+flirimageextractor==1.3.0
+
+# Optional storage backends
+smbprotocol>=1.13        # SMB / CIFS shares  (STORAGE_BACKEND=smb)
+
+# Production server / tests
+gunicorn>=21.2
+pytest>=8.0
+wsgidav>=4.3             # only used by the WebDAV test
+cheroot>=10.0

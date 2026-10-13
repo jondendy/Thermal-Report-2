@@ -1,0 +1,117 @@
+{
+  "Window": {
+    "advice": [
+      "Install thermal curtains or cellular shades to reduce heat loss through glazing",
+      "Add weather stripping around window frame to eliminate drafts",
+      "Consider secondary glazing or low-E window film for improved insulation",
+      "Check for gaps around frame and seal with appropriate caulk or expanding foam",
+      "Inspect window hardware and ensure proper closure and lock engagement"
+    ],
+    "savings": "10-20% on heating costs",
+    "priority": "high",
+    "description": "Windows are a major source of heat loss in buildings. Even modern double-glazed units can lose significant heat, while single-glazed windows are particularly problematic."
+  },
+  "Door": {
+    "advice": [
+      "Install or replace door sweep at bottom to prevent air infiltration",
+      "Add weather stripping to frame perimeter for better seal",
+      "Consider installing a thermal door curtain for additional insulation",
+      "Check threshold and seal any gaps with appropriate materials",
+      "Ensure door closer is adjusted for proper seal when closed"
+    ],
+    "savings": "5-10% on heating costs",
+    "priority": "medium",
+    "description": "External doors are common heat loss points, particularly around frames and thresholds. Poor sealing can result in significant air leakage."
+  },
+  "Wall": {
+    "advice": [
+      "Inspect cavity wall insulation levels and top up if necessary",
+      "Consider external wall insulation (EWI) for solid wall properties",
+      "Investigate internal wall insulation (IWI) as alternative to EWI",
+      "Check for thermal bridging at structural elements (lintels, columns)",
+      "Investigate any signs of damp or missing insulation in cavity",
+      "Consider thermal render or insulated plasterboard solutions"
+    ],
+    "savings": "15-35% on heating costs",
+    "priority": "high",
+    "description": "Wall heat loss is one of the largest contributors to energy waste in buildings. Solid walls lose heat twice as fast as cavity walls, and poorly insulated cavity walls are also highly inefficient."
+  },
+  "Eaves": {
+    "advice": [
+      "Improve loft insulation to recommended 270mm depth (glass wool) or 250mm (mineral wool)",
+      "Seal gaps between wall and roof structure to prevent air leakage",
+      "Check ventilation/insulation balance to prevent condensation issues",
+      "Install eaves insulation baffles to maintain airflow while improving insulation",
+      "Ensure insulation extends right to eaves but doesn't block soffit vents",
+      "Consider spray foam or rigid board insulation for difficult eaves areas"
+    ],
+    "savings": "20-30% on heating costs",
+    "priority": "high",
+    "description": "Heat rises, making the eaves area a critical heat loss point. Inadequate insulation at the eaves can undermine the entire roof insulation system."
+  },
+  "Vent": {
+    "advice": [
+      "Install controllable trickle vents to balance ventilation with heat retention",
+      "Assess whether vent is necessary or can be sealed (check building regulations)",
+      "Consider mechanical ventilation with heat recovery (MVHR) system",
+      "Ensure existing vents serve their intended purpose and aren't over-ventilating",
+      "Install vent covers that can be closed when not needed",
+      "Check for uncontrolled air leakage around vent installations"
+    ],
+    "savings": "5-10% on heating costs",
+    "priority": "low",
+    "description": "While ventilation is essential for air quality and preventing condensation, uncontrolled ventilation leads to unnecessary heat loss. Modern controlled ventilation systems can dramatically reduce this issue."
+  },
+  "Roof": {
+    "advice": [
+      "Increase loft insulation depth to current building regulation standards",
+      "Check for gaps, compressed areas, or missing insulation sections",
+      "Inspect roof tiles for damage or missing tiles allowing heat escape",
+      "Consider warm roof construction for flat roofs (insulation above deck)",
+      "Ensure adequate ventilation to prevent condensation in cold roof spaces",
+      "Insulate loft hatch and add draught excluder around opening",
+      "Consider spray foam insulation for complex roof structures"
+    ],
+    "savings": "25-35% on heating costs",
+    "priority": "high",
+    "description": "The roof is typically the largest single source of heat loss in a building. Up to 25% of heat can be lost through an uninsulated roof. This is often the most cost-effective area to improve."
+  },
+  "Chimney": {
+    "advice": [
+      "Install chimney balloon or sheep when fireplace is not in use",
+      "Consider permanent chimney cap if fireplace is no longer used",
+      "Seal around fireplace opening with appropriate fire-resistant materials",
+      "Check and adjust flue damper operation for better control",
+      "Install a chimney cowl to reduce downdrafts",
+      "Consider room-sealed or balanced flue heating appliances as alternatives"
+    ],
+    "savings": "5-15% on heating costs",
+    "priority": "medium",
+    "description": "Open chimneys act as a direct route for warm air to escape the building. Even when not in use, chimneys can draw significant amounts of heated air up and out of the property."
+  },
+  "Porch": {
+    "advice": [
+      "Create thermal air-lock by installing internal porch door if not present",
+      "Improve porch insulation in walls, roof, and floor",
+      "Seal gaps around all door frames with weather stripping",
+      "Consider fully enclosed porch addition if currently open or semi-open",
+      "Install draught excluders on both porch doors",
+      "Add thermal glazing to porch windows if single-glazed"
+    ],
+    "savings": "5-10% on heating costs",
+    "priority": "medium",
+    "description": "A properly designed porch creates an air-lock that significantly reduces heat loss when doors are opened. However, a poorly insulated or badly sealed porch can itself become a source of heat loss."
+  },
+  "_metadata": {
+    "version": "1.0",
+    "date_created": "2025-11-28",
+    "focus": "heat_loss_reduction",
+    "target_audience": "uk_residential_properties",
+    "savings_basis": "Estimated savings based on typical UK building stock and Energy Saving Trust guidance",
+    "priority_criteria": {
+      "high": "Large heat loss area or high impact improvement",
+      "medium": "Moderate heat loss or cost-effective fix",
+      "low": "Minor heat loss or complex/expensive solution"
+    }
+  }
+}

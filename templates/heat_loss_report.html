@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Building Heat Loss Survey Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f4f4f4;
+        }
+        .report-container {
+            background: white;
+            padding: 40px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            border-bottom: 4px solid #2c3e50;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #2c3e50;
+            margin: 0;
+            font-size: 2.5em;
+        }
+        .header .subtitle {
+            color: #7f8c8d;
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+        .property-info {
+            background: #ecf0f1;
+            padding: 20px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 30px;
+        }
+        .property-info h2 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .summary-box {
+            background: #e8f4f8;
+            border: 2px solid #3498db;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 5px;
+        }
+        .summary-box h2 {
+            color: #2c3e50;
+            margin-top: 0;
+        }
+        .severity-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin: 5px;
+        }
+        .severity-critical {
+            background: #e74c3c;
+            color: white;
+        }
+        .severity-high {
+            background: #e67e22;
+            color: white;
+        }
+        .severity-medium {
+            background: #f39c12;
+            color: white;
+        }
+        .severity-low {
+            background: #f1c40f;
+            color: #333;
+        }
+        .finding {
+            margin: 40px 0;
+            padding: 25px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fafafa;
+        }
+        .finding h3 {
+            color: #2c3e50;
+            margin-top: 0;
+            font-size: 1.5em;
+        }
+        .finding-images {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .finding-image {
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .finding-image img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .finding-image .caption {
+            background: #2c3e50;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+        .temperature-stats {
+            background: #fff;
+            padding: 15px;
+            margin: 15px 0;
+            border-left: 4px solid #3498db;
+        }
+        .recommendations {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .recommendations h4 {
+            color: #155724;
+            margin-top: 0;
+        }
+        .recommendations ul {
+            margin: 10px 0;
+        }
+        .recommendations li {
+            margin: 8px 0;
+        }
+        .savings-estimate {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .priority-high {
+            color: #c0392b;
+            font-weight: bold;
+        }
+        .priority-medium {
+            color: #e67e22;
+            font-weight: bold;
+        }
+        .priority-low {
+            color: #7f8c8d;
+        }
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            text-align: center;
+            color: #7f8c8d;
+        }
+        .surveyor-notes {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px 20px;
+            margin-bottom: 30px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .surveyor-notes h2 { margin-top: 0; color: #2c3e50; }
+        .surveyor-note {
+            color: #555;
+            font-style: italic;
+            border-left: 3px solid #ffc107;
+            padding-left: 10px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+        .image-note-line {
+            background: #f8f9fa;
+            color: #555;
+            font-style: italic;
+            padding: 8px 10px;
+            font-size: 0.85em;
+            white-space: pre-wrap;
+        }
+        .finding { page-break-inside: avoid; }
+        @media print {
+            body {
+                background: white;
+            }
+            .report-container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="report-container">
+        <div class="header">
+            <h1>Building Heat Loss Survey Report</h1>
+            <div class="subtitle">Thermal Imaging Analysis and Energy Assessment</div>
+        </div>
+
+        <div class="property-info">
+            <h2>Property Information</h2>
+            <p><strong>Address:</strong> {{ report_data.property_address }}</p>
+            <p><strong>Survey Date:</strong> {{ report_data.survey_date }}</p>
+            <p><strong>Survey Time:</strong> {{ report_data.survey_time }}</p>
+            <p><strong>Inspector:</strong> {{ report_data.inspector_name }}</p>
+            <p><strong>Batch ID:</strong> {{ report_data.batch_id }}</p>
+        </div>
+
+        {% if report_data.general_notes %}
+        <div class="surveyor-notes">
+            <h2>Surveyor Notes</h2>
+            <p>{{ report_data.general_notes }}</p>
+        </div>
+        {% endif %}
+
+        <div class="summary-box">
+            <h2>Executive Summary</h2>
+            <p><strong>Total Heat Loss Points Identified:</strong> {{ report_data.summary.total_findings }}</p>
+            <p><strong>Highest Severity Level:</strong> 
+                <span class="severity-badge severity-{{ report_data.summary.highest_severity.lower() }}">
+                    {{ report_data.summary.highest_severity }}
+                </span>
+            </p>
+            
+            <p><strong>Severity Breakdown:</strong></p>
+            <div>
+                {% if report_data.summary.severity_breakdown.critical > 0 %}
+                    <span class="severity-badge severity-critical">Critical: {{ report_data.summary.severity_breakdown.critical }}</span>
+                {% endif %}
+                {% if report_data.summary.severity_breakdown.high > 0 %}
+                    <span class="severity-badge severity-high">High: {{ report_data.summary.severity_breakdown.high }}</span>
+                {% endif %}
+                {% if report_data.summary.severity_breakdown.medium > 0 %}
+                    <span class="severity-badge severity-medium">Medium: {{ report_data.summary.severity_breakdown.medium }}</span>
+                {% endif %}
+                {% if report_data.summary.severity_breakdown.low > 0 %}
+                    <span class="severity-badge severity-low">Low: {{ report_data.summary.severity_breakdown.low }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <h2 style="color: #2c3e50; margin-top: 50px;">Detailed Findings</h2>
+
+        {% for finding in report_data.findings %}
+        <div class="finding">
+            <h3>{{ finding.title }}</h3>
+            
+            <div>
+                <span class="severity-badge severity-{{ finding.severity }}">{{ finding.severity.upper() }} PRIORITY</span>
+                {% if finding.image_count > 1 %}
+                    <span style="background: #95a5a6; color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; margin-left: 10px;">
+                        Visible in {{ finding.image_count }} images
+                    </span>
+                {% endif %}
+            </div>
+
+            <div class="temperature-stats">
+                <strong>Temperature Analysis:</strong><br>
+                Max: {{ "%.1f"|format(finding.max_temp) }}°C | 
+                Avg: {{ "%.1f"|format(finding.avg_temp) }}°C | 
+                Min: {{ "%.1f"|format(finding.min_temp) }}°C
+            </div>
+
+            <p>{{ finding.description }}</p>
+
+            {% for n in finding.surveyor_notes %}
+            <p class="surveyor-note"><strong>Surveyor note{% if finding.image_count > 1 %} ({{ n.image_name }}){% endif %}:</strong> {{ n.note }}</p>
+            {% endfor %}
+
+            <div class="finding-images">
+                {% for im in finding.images %}
+                <div class="finding-image">
+                    <img src="/download/{{ report_data.batch_id }}/{{ im.labeled_image }}"
+                         alt="Thermal image showing {{ finding.type }}">
+                    <div class="caption">{{ im.image_name }} &ndash; {{ "%.1f"|format(im.temperature) }}°C, location ({{ im.location[0] }}, {{ im.location[1] }})</div>
+                    {% if im.image_note %}<div class="image-note-line">{{ im.image_note }}</div>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            {% if finding.recommendations %}
+            <div class="recommendations">
+                <h4>🔧 Recommended Actions <span class="priority-{{ finding.recommendations.priority }}">{{ finding.recommendations.priority.upper() }} PRIORITY</span></h4>
+                <ul>
+                    {% for advice in finding.recommendations.advice %}
+                    <li>{{ advice }}</li>
+                    {% endfor %}
+                </ul>
+                
+                <div class="savings-estimate">
+                    💡 Estimated Energy Savings: {{ finding.recommendations.savings }}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <div class="summary-box" style="margin-top: 50px;">
+            <h2>Priority Action Plan</h2>
+            <p>Based on this thermal survey, we recommend addressing issues in the following order:</p>
+            
+            <h3 class="priority-high">🔴 High Priority (Address Immediately)</h3>
+            <ul>
+                {% for rec in report_data.recommendations %}
+                    {% if rec.priority == 'high' %}
+                    <li><strong>{{ rec.type }} (#{{ rec.spot_number }}):</strong> {{ rec.advice[0] }} - <em>{{ rec.savings }}</em></li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+
+            <h3 class="priority-medium">🟡 Medium Priority (Address Soon)</h3>
+            <ul>
+                {% for rec in report_data.recommendations %}
+                    {% if rec.priority == 'medium' %}
+                    <li><strong>{{ rec.type }} (#{{ rec.spot_number }}):</strong> {{ rec.advice[0] }} - <em>{{ rec.savings }}</em></li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+
+            <h3 class="priority-low">⚪ Low Priority (Monitor)</h3>
+            <ul>
+                {% for rec in report_data.recommendations %}
+                    {% if rec.priority == 'low' %}
+                    <li><strong>{{ rec.type }} (#{{ rec.spot_number }}):</strong> {{ rec.advice[0] }} - <em>{{ rec.savings }}</em></li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>This report was generated using thermal imaging analysis technology.</p>
+            <p>For questions or additional analysis, please contact your energy assessor.</p>
+            <p><em>Report generated: {{ report_data.survey_date }} {{ report_data.survey_time }}</em></p>
+        </div>
+    </div>
+</body>
+</html>
