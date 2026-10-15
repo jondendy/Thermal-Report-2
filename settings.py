@@ -24,6 +24,7 @@ class Settings:
     max_upload_mb: int = 200
     batch_size: int = 8
     sensitivity: str = "medium"          # low | medium | high
+    max_spots: int = 8                   # automatic points kept per image (strongest first)
     secret_key: str = "change-me"
     org_name: str = ""
 
@@ -40,6 +41,7 @@ def load_settings(env=None) -> Settings:
         max_upload_mb=_int(env, "MAX_UPLOAD_MB", 200),
         batch_size=_int(env, "BATCH_SIZE", 8),
         sensitivity=sensitivity,
+        max_spots=max(1, min(_int(env, "MAX_SPOTS_PER_IMAGE", 8), 30)),
         secret_key=env.get("SECRET_KEY", "change-me"),
         org_name=env.get("ORG_NAME", ""),
     )

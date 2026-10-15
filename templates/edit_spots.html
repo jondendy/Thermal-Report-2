@@ -130,7 +130,7 @@
             note.value = s.note || '';
             const row = el('div', { class: 'spot-row' },
                 el('div', { class: 'spot-id' }, document.createTextNode('Point ' + (idx + 1)),
-                    el('small', { text: s.temperature + '°C ' }, el('span', { class: 'tag', text: s.source }))),
+                    el('small', { text: s.temperature + '°C' + (s.excess != null ? ' (' + (s.excess >= 0 ? '+' : '') + s.excess + ' vs wall) ' : ' ') }, el('span', { class: 'tag', text: s.source }))),
                 typeSel, num, sev, note);
             if (s.source === 'manual') {
                 row.appendChild(el('button', { class: 'del', text: 'Remove this point', onclick: () => {
@@ -163,7 +163,7 @@
                     const resp = await fetch('/api/temperature/' + encodeURIComponent(BATCH) + '/' + encodeURIComponent(img.image_name) + '?row=' + row + '&col=' + col);
                     const p = await resp.json(); if (!resp.ok) throw new Error(p.error || 'lookup failed');
                     img.spots.push({ spot_id: img.image_name + '_manual' + Date.now() + Math.floor(Math.random() * 1000), source: 'manual',
-                                     location: [p.row, p.col], temperature: p.temperature, severity: p.severity, auto_severity: p.severity,
+                                     location: [p.row, p.col], temperature: p.temperature, severity: p.severity, auto_severity: p.severity, excess: p.excess,
                                      type: '', spot_number: null, note: '' });
                     refresh(); stats();
                 } catch (e) { status('Could not read temperature: ' + e.message, 'error'); }

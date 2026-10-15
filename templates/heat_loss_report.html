@@ -267,6 +267,7 @@
                 Max: {{ "%.1f"|format(finding.max_temp) }}°C | 
                 Avg: {{ "%.1f"|format(finding.avg_temp) }}°C | 
                 Min: {{ "%.1f"|format(finding.min_temp) }}°C
+                {% if finding.max_excess is not none %}| Above wall: +{{ "%.1f"|format(finding.max_excess) }}°C{% endif %}
             </div>
 
             <p>{{ finding.description }}</p>

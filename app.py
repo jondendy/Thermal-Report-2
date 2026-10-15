@@ -44,7 +44,7 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     storage = storage or create_storage()
     reporter = HeatLossReporter()
     service = BatchService(storage, reporter.spot_types, sensitivity=settings.sensitivity,
-                           processor_factory=processor_factory)
+                           max_spots=settings.max_spots, processor_factory=processor_factory)
     app.extensions["storage"], app.extensions["service"] = storage, service
     logger.info("Storage backend: %s", storage.describe())
 

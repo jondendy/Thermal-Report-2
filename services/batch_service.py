@@ -56,10 +56,11 @@ def _clean_text(value: Any, limit: int = MAX_NOTE) -> str:
 
 class BatchService:
     def __init__(self, storage: StorageBackend, spot_types: List[str],
-                 sensitivity: str = "medium", processor_factory=None):
+                 sensitivity: str = "medium", max_spots: int = 8, processor_factory=None):
         self.storage = storage
         self.spot_types = list(spot_types)
         self.sensitivity = sensitivity
+        self.max_spots = max_spots
         self._processor_factory = processor_factory
         self._temp_cache: Dict[Tuple[str, str], np.ndarray] = {}
 
@@ -82,6 +83,7 @@ class BatchService:
     def process_batch(self, batch_id: str, files: List[Tuple[str, bytes]]) -> Dict:
         """files: [(original_filename, raw_bytes)]. Returns the results dict."""
         from thermal_analyzer import ThermalAnalyzer
+        from warm_areas import detect_warm_areas
 
         processor = self._make_processor()
         analyzer = ThermalAnalyzer(sensitivity=self.sensitivity)
@@ -112,7 +114,7 @@ class BatchService:
                 self.storage.write_bytes(f"{idir}/{name}", raw)
                 with self.storage.local_copy(f"{idir}/{name}") as local:
                     temp, stats = processor.process_single_image(local, display=False)
-                    hot_spots = analyzer.detect_hot_spots(temp)
+                    hot_spots = detect_warm_areas(temp, self.sensitivity, self.max_spots)
                     spots = []
                     for i, hs in enumerate(hot_spots, 1):
                         d = hs.to_dict()
@@ -121,6 +123,7 @@ class BatchService:
                             "location": [int(d["location"][0]), int(d["location"][1])],
                             "temperature": round(float(d["temperature"]), 2),
                             "severity": d["severity"], "area_size": int(d["area_size"]),
+                            "excess": d["excess"],
                         })
                     labeled = annotate.render_labeled_image(local, temp.shape, spots)
                     self.storage.write_bytes(f"{rdir}/{stem}_labeled.jpg",
@@ -204,19 +207,14 @@ class BatchService:
         return self._temp_cache[key]
 
     def probe(self, batch_id: str, image_name: str, row: int, col: int) -> Dict:
-        """Temperature + suggested severity at one point (used when adding a manual point)."""
-        from thermal_analyzer import SKY_REFLECTION_CUTOFF_C, ThermalAnalyzer
+        """Temperature, degrees above the wall, and suggested severity at one clicked point."""
+        from warm_areas import severity_at
         arr = self.temperatures(batch_id, image_name)
         r = int(min(max(row, 0), arr.shape[0] - 1))
         c = int(min(max(col, 0), arr.shape[1] - 1))
-        temp = float(arr[r, c])
-        valid = np.where(np.isfinite(arr) & (arr > SKY_REFLECTION_CUTOFF_C), arr, np.nan)
-        if np.isfinite(valid).any():
-            severity = ThermalAnalyzer(sensitivity=self.sensitivity)._classify_severity(
-                temp, valid[np.isfinite(valid)])
-        else:
-            severity = "low"
-        return {"row": r, "col": c, "temperature": round(temp, 2), "severity": severity}
+        excess, severity = severity_at(arr, r, c)
+        return {"row": r, "col": c, "temperature": round(float(arr[r, c]), 2),
+                "excess": excess, "severity": severity}
 
     # ------------------------------------------------------------------ labels & notes
     def get_labels(self, batch_id: str) -> Dict:
@@ -299,7 +297,7 @@ class BatchService:
             if not base:
                 return None
             location, temp, area = base["location"], base["temperature"], base.get("area_size", 0)
-            auto_sev = base["severity"]
+            auto_sev, excess = base["severity"], base.get("excess")
         else:
             try:
                 row, col = int(s["location"][0]), int(s["location"][1])
@@ -307,6 +305,7 @@ class BatchService:
                 return None
             p = self.probe(batch_id, image_name, row, col)      # temperature comes from the data
             location, temp, area, auto_sev = [p["row"], p["col"]], p["temperature"], 0, p["severity"]
+            excess = p["excess"]
             if not spot_id:
                 spot_id = f"{image_name}_manual{int(datetime.now().timestamp() * 1000)}"
 
@@ -319,7 +318,7 @@ class BatchService:
             number = None
         return {"spot_id": spot_id, "image_name": image_name, "source": source,
                 "location": [int(location[0]), int(location[1])], "temperature": float(temp),
-                "area_size": int(area), "auto_severity": auto_sev, "severity": sev,
+                "area_size": int(area), "excess": excess, "auto_severity": auto_sev, "severity": sev,
                 "type": stype, "spot_number": number, "note": _clean_text(s.get("note"), 2000)}
 
     def regenerate_labeled_images(self, batch_id: str, labels: Dict, analysis: Dict) -> None:

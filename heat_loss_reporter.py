@@ -67,8 +67,13 @@ class HeatLossReporter:
 
         where = (f"at {spot_type.lower()} location" if len(group) == 1
                  else f"at {spot_type.lower()} visible in {len(group)} images")
+        excesses = [float(s["excess"]) for s in group if s.get("excess") is not None]
+        max_excess = max(excesses) if excesses else None
         text = (f"Heat loss detected {where}. Temperature readings range from "
-                f"{min_t:.1f}°C to {max_t:.1f}°C, averaging {avg_t:.1f}°C. ")
+                f"{min_t:.1f}°C to {max_t:.1f}°C, averaging {avg_t:.1f}°C")
+        if max_excess is not None and max_excess > 0:
+            text += f", up to {max_excess:.1f}°C warmer than the surrounding wall surface"
+        text += ". "
         text += {
             "critical": "This represents a critical heat loss point requiring immediate attention.",
             "high": "This is a significant heat loss area that should be addressed promptly.",
@@ -96,7 +101,7 @@ class HeatLossReporter:
             "title": f"Heat loss at {spot_type} #{number}",
             "description": text,                       # AUTO comment
             "surveyor_notes": notes,                   # freehand, per point
-            "max_temp": max_t, "min_temp": min_t, "avg_temp": avg_t,
+            "max_temp": max_t, "min_temp": min_t, "avg_temp": avg_t, "max_excess": max_excess,
             "severity": severity,
             "image_count": len(set(s["image_name"] for s in group)),
             "images": images,

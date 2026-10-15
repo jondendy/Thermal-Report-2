@@ -5,7 +5,8 @@ survey report. Runs on any server and stores its files on local disk, a **WebDAV
 
 ## Workflow
 
-1. **Upload** 1-8 FLIR `.jpg` images. Temperatures are extracted and hot spots are detected automatically.
+1. **Upload** 1-8 FLIR `.jpg` images. Temperatures are extracted and areas that are distinctly warmer than the
+   wall are detected automatically (see *How warm areas are found* below).
 2. **Define points** (`/edit_spots/<batch>`): give each point a *type* (Window, Wall, ...) and a *number*
    (same number in two images = the same feature). Missed something? **Click the picture** to add a point; its
    temperature is read from the thermal data.
@@ -19,16 +20,32 @@ survey report. Runs on any server and stores its files on local disk, a **WebDAV
 sudo apt install libimage-exiftool-perl          # FLIR reader dependency (macOS: brew install exiftool)
 python3 -m venv venv && . venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env                             # then export the variables, or set them in your service
+cp env.example .env                             # then export the variables, or set them in your service
 python app.py                                    # development  ->  http://localhost:5000
 gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 300 wsgi:app    # production
 ```
 
 Docker: `docker build -t thermal-report . && docker run -p 5000:5000 -v $PWD/data:/app/data thermal-report`
 
+## How warm areas are found
+
+An area is flagged when it is clearly warmer than **the building surface in the same picture**:
+
+1. Very cold pixels (sky, ground) are set aside, so they cannot distort the measurement.
+2. The typical wall temperature is the most common temperature among the rest, and the wall's natural
+   scatter is measured on its warm side.
+3. Pixels above that baseline by a clear margin are grouped into areas; tiny specks are dropped, points are
+   never placed on the outer frame, and the strongest are kept (`MAX_SPOTS_PER_IMAGE`).
+
+Each point shows its temperature and **how many degrees warmer than the wall it is** (also used in the report
+comment). Severity follows that difference: under 2 degC low, 2+ medium, 4+ high, 8+ critical. Clicking on a
+picture to add a point uses the same scale. `SENSITIVITY` (`low` / `medium` / `high`) sets how distinct an area
+must be; on the six sample photos `medium` finds 1-8 points per image, mostly eaves, rooflines and window/door
+frames, plus a 16 degC window hot spot.
+
 ## Storage
 
-Set `STORAGE_BACKEND` (see `.env.example`):
+Set `STORAGE_BACKEND` (see `env.example`):
 
 | Backend  | Use it for | Notes |
 |----------|-----------|-------|
@@ -42,7 +59,7 @@ class implementing seven small methods.
 ## Tests
 
 ```bash
-pytest                                            # 37 tests, no photos or exiftool needed
+pytest                                            # 50 tests, no photos or exiftool needed
 THERMAL_TEST_IMAGES=/path/to/flir pytest          # also runs the real FLIR extraction tests
 ```
 
@@ -53,7 +70,7 @@ The WebDAV tests run against a real WebDAV server (wsgidav) started by the test 
 | Part | Source |
 |------|--------|
 | FLIR extraction + temperature stats (`flir_processor.py`) | `legacy-stable:experiments/flir_processor_simple.py` (adds the colour-blind-friendly colormap). Same extraction code as `heat-loss-report`. |
-| Hot-spot detection (`thermal_analyzer.py`) | `heat-loss-report` tip `760a567` (incl. `e68cf33` sky-reflection filter), with the filter fixed so it is actually applied |
+| Warm-area detection (`warm_areas.py`) | new: replaces the `heat-loss-report` detector (`thermal_analyzer.py`, kept for its report-text helpers) |
 | Point definition: type + number, grid editor, labelled report (`templates/edit_spots.html`, `heat_loss_report.html`, `heat_loss_reporter.py`) | `heat-loss-report` (`c59dd99`, `c1c83c0`, `9966258`, `24aeaf1`), rebuilt - see below |
 | Freehand notes: survey notes, per-finding notes | idea and report layout from `GCSmain` (`3b7d0b6`, `ed8e900`); extended with per-image notes |
 | Storage layer (`storage/`) | new |
@@ -81,8 +98,10 @@ which fails offline and on read-only hosts.
 ## Known limits
 
 - **No login.** Put it behind a VPN, reverse proxy with auth, or your network firewall.
-- **Detection on cold-sky images:** the detector flags pixels above mean + 2 standard deviations. A large cold sky
-  inflates the deviation, so some outdoor images find no automatic points (that is what click-to-add is for).
+- **Detection is relative to the wall.** A building that is warm all over (e.g. a whole elevation lit by
+  the sun or an uninsulated gable) has nothing "distinctly warmer" than itself, so it can find few points;
+  that is a real limit of comparing a wall with itself. Use click-to-add for anything the detector misses.
+- Batches processed before this change keep their old automatic points; re-upload their images to re-detect.
 - **SMB** is implemented on `smbprotocol` but has only been tested at path-logic level (no SMB server was available).
   **WebDAV** is tested against wsgidav, not yet against Nextcloud/Synology.
 - No PDF export yet (the report page has print styles: use the browser's *Print to PDF*).

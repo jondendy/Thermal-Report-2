@@ -24,7 +24,8 @@ class HotSpot:
     """Represents a detected thermal anomaly"""
     
     def __init__(self, location: Tuple[int, int], temperature: float, 
-                 area_size: int, severity: str):
+                 area_size: int, severity: str, excess: float = None):
+        self.excess = excess  # degC above the building baseline (None for the legacy detector)
         self.location = location  # (row, col) in temperature array
         self.temperature = temperature
         self.area_size = area_size  # number of pixels in hot spot
@@ -39,6 +40,7 @@ class HotSpot:
             'temperature': float(self.temperature),
             'area_size': int(self.area_size),
             'severity': self.severity,
+            'excess': None if self.excess is None else float(self.excess),
             'description': self.description,
             'likely_cause': self.likely_cause
         }
