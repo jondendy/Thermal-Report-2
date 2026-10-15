@@ -59,7 +59,7 @@ class implementing seven small methods.
 ## Tests
 
 ```bash
-pytest                                            # 50 tests, no photos or exiftool needed
+pytest                                            # 51 tests, no photos or exiftool needed
 THERMAL_TEST_IMAGES=/path/to/flir pytest          # also runs the real FLIR extraction tests
 ```
 

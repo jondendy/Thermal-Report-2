@@ -49,7 +49,7 @@ def test_full_survey_with_notes_produces_report(client, jpeg_bytes):
                "general_notes": "Clear night, 2C outside.", "images": state["images"]}
 
     saved = client.post(f"/save_labels/{batch_id}", json=payload).get_json()
-    assert saved["success"] and saved["labeled_spots"] == 3 - 1   # auto on image2 left unlabelled
+    assert saved["success"] and saved["labeled_spots"] == 3     # the auto point on image 2 arrives pre-labelled too
 
     # persisted labels: client-supplied temperature was replaced by the real one
     labels = client.application.extensions["service"].get_labels(batch_id)
@@ -137,3 +137,19 @@ def test_unprocessable_upload_is_reported_and_not_stored(local_storage, jpeg_byt
     assert local_storage.listdir("reports/batches") == []          # nothing half-saved
     assert local_storage.listdir("images/batches") == []
     assert client.get("/healthz").get_json()["status"] == "ok"
+
+
+def test_automatic_points_arrive_prelabelled_as_walls_and_operator_edits_stick(client, jpeg_bytes):
+    batch_id, _ = upload(client, jpeg_bytes, names=("one.jpg", "two.jpg"))
+    state = edit_state(client, batch_id)
+    autos = [s for i in state["images"] for s in i["spots"]]
+    assert [(s["type"], s["spot_number"]) for s in autos] == [("Wall", 1), ("Wall", 2)]
+
+    autos[0]["type"], autos[0]["spot_number"] = "Door", 1           # operator: W1 is really D1
+    client.post(f"/save_labels/{batch_id}", json={"images": state["images"]})
+    again = [s for i in edit_state(client, batch_id)["images"] for s in i["spots"]]
+    assert [(s["type"], s["spot_number"]) for s in again] == [("Door", 1), ("Wall", 2)]
+
+    gen = client.post(f"/generate_heat_loss_report/{batch_id}", json={}).get_json()
+    page = client.get(gen["report_url"]).get_data(as_text=True)
+    assert "Heat loss at Door #1" in page and "Heat loss at Wall #2" in page

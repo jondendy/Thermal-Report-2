@@ -101,7 +101,9 @@
             document.getElementById('labeledCount').textContent = defined;
         }
 
-        function markerText(s, idx) { return (s.type && s.spot_number) ? s.type[0] + s.spot_number : String(idx + 1); }
+        const ABBR = { Wall: 'W', Window: 'Wi', Door: 'D', Eaves: 'E', Vent: 'V', Roof: 'R', Chimney: 'C', Porch: 'P' };
+        function markerText(s, idx) { return (s.type && s.spot_number) ? (ABBR[s.type] || s.type[0]) + s.spot_number : String(idx + 1); }
+        function nextNumber() { let m = 0; STATE.images.forEach(i => i.spots.forEach(s => { if (s.spot_number > m) m = s.spot_number; })); return m + 1; }
 
         function drawMarkers(img, wrap) {
             wrap.querySelectorAll('.marker').forEach(m => m.remove());
@@ -164,7 +166,7 @@
                     const p = await resp.json(); if (!resp.ok) throw new Error(p.error || 'lookup failed');
                     img.spots.push({ spot_id: img.image_name + '_manual' + Date.now() + Math.floor(Math.random() * 1000), source: 'manual',
                                      location: [p.row, p.col], temperature: p.temperature, severity: p.severity, auto_severity: p.severity, excess: p.excess,
-                                     type: '', spot_number: null, note: '' });
+                                     type: TYPES.includes('Wall') ? 'Wall' : '', spot_number: nextNumber(), note: '' });
                     refresh(); stats();
                 } catch (e) { status('Could not read temperature: ' + e.message, 'error'); }
             });
