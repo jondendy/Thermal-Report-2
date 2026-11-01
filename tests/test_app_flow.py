@@ -139,17 +139,17 @@ def test_unprocessable_upload_is_reported_and_not_stored(local_storage, jpeg_byt
     assert client.get("/healthz").get_json()["status"] == "ok"
 
 
-def test_automatic_points_arrive_prelabelled_as_walls_and_operator_edits_stick(client, jpeg_bytes):
+def test_automatic_points_arrive_prelabelled_as_windows_and_operator_edits_stick(client, jpeg_bytes):
     batch_id, _ = upload(client, jpeg_bytes, names=("one.jpg", "two.jpg"))
     state = edit_state(client, batch_id)
     autos = [s for i in state["images"] for s in i["spots"]]
-    assert [(s["type"], s["spot_number"]) for s in autos] == [("Wall", 1), ("Wall", 2)]
+    assert [(s["type"], s["spot_number"]) for s in autos] == [("Window", 1), ("Window", 2)]
 
-    autos[0]["type"], autos[0]["spot_number"] = "Door", 1           # operator: W1 is really D1
+    autos[0]["type"], autos[0]["spot_number"] = "Door", 1           # operator: Wi1 is really D1
     client.post(f"/save_labels/{batch_id}", json={"images": state["images"]})
     again = [s for i in edit_state(client, batch_id)["images"] for s in i["spots"]]
-    assert [(s["type"], s["spot_number"]) for s in again] == [("Door", 1), ("Wall", 2)]
+    assert [(s["type"], s["spot_number"]) for s in again] == [("Door", 1), ("Window", 2)]
 
     gen = client.post(f"/generate_heat_loss_report/{batch_id}", json={}).get_json()
     page = client.get(gen["report_url"]).get_data(as_text=True)
-    assert "Heat loss at Door #1" in page and "Heat loss at Wall #2" in page
+    assert "Heat loss at Door #1" in page and "Heat loss at Window #2" in page

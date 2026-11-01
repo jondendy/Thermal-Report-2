@@ -229,10 +229,10 @@ class BatchService:
         analysis = self.get_analysis(batch_id)
         labels = self.get_labels(batch_id)
         saved = {s["spot_id"]: s for s in labels.get("spots", [])}
-        # Automatic points arrive pre-labelled "Wall" with the next free number (W1, W2, ...);
+        # Automatic points arrive pre-labelled "Window" with the next free number (Wi1, Wi2, ...);
         # the operator changes any that are really a Door, Window, etc. Saved labels always win.
         next_number = max([int(m["spot_number"]) for m in labels.get("spots", []) if m.get("spot_number")] or [0]) + 1
-        default_type = "Wall" if "Wall" in self.spot_types else (self.spot_types[0] if self.spot_types else "")
+        default_type = "Window" if "Window" in self.spot_types else (self.spot_types[0] if self.spot_types else "")
         images = []
         for img in analysis.get("images", []):
             name = img["image_name"]
