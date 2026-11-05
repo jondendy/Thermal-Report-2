@@ -4,13 +4,13 @@ Pure data in, pure data out: it takes the surveyor's labelled points (plus notes
 returns the report dictionary the template renders. It does no file I/O on survey data,
 so it works the same on local disk, WebDAV or SMB (the BatchService does the storing).
 
-Two kinds of commentary end up in the report, deliberately kept apart so the page can
-show both:
-  * AUTO comments  - generated from the point definition (type, number, temperatures,
-                     severity) plus the recommendation text for that type.
-  * SURVEYOR notes - freehand text typed by the user, at three levels:
-                     whole survey (general_notes), per image (image_notes) and per
-                     point (spot['note']).
+What the report says about each point is built from three layers, kept apart so the
+surveyor can see and change each one in the editor:
+  * comment    - generated from the point definition (type, temperatures, severity); the
+                 surveyor can overwrite it, or leave it blank to keep the generated text.
+  * extras     - recommendations the surveyor picked from the list for that point type.
+  * note       - freehand text.
+Survey-wide (general_notes) and per-image (image_notes) notes are separate again.
 """
 from __future__ import annotations
 
@@ -20,9 +20,21 @@ from collections import OrderedDict
 from datetime import datetime
 from typing import Dict, List, Optional
 
-SEVERITY_ORDER = ["low", "medium", "high", "critical"]
-_DEFAULT_RECS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "energy_recommendations.json")
+from vocab import (SEVERITY_COLOURS, SEVERITY_LABELS, SEVERITY_ORDER, SEVERITY_TEXT,
+                   normalise_severity, severity_legend, short_id)
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_DEFAULT_RECS = os.path.join(_HERE, "energy_recommendations.json")
+_DEFAULT_CONTENT = os.path.join(_HERE, "report_content.json")
+IMAGES_PER_SHEET = 4
+MAX_EXTRAS = 12
+
+SEVERITY_SENTENCE = {
+    "very_high": "This is a very high heat loss point that should be addressed first.",
+    "high": "This is a significant heat loss area that should be addressed promptly.",
+    "medium": "This represents moderate heat loss that should be addressed.",
+    "low": "This is a minor heat loss point for consideration.",
+}
 
 
 def labeled_image_name(image_name: str) -> str:
@@ -30,137 +42,139 @@ def labeled_image_name(image_name: str) -> str:
     return f"{stem}_labeled.jpg"
 
 
+def _fill(value, org: str):
+    """Put the organisation's name into {org} placeholders, in text, lists and dicts."""
+    if isinstance(value, str):
+        return value.replace("{org}", org)
+    if isinstance(value, list):
+        return [_fill(v, org) for v in value]
+    if isinstance(value, dict):
+        return {k: _fill(v, org) for k, v in value.items() if not k.startswith("_")}
+    return value
+
+
+def _safe_links(measures: List[Dict]) -> List[Dict]:
+    for m in measures:
+        m["links"] = [l for l in m.get("links", []) if str(l.get("url", "")).startswith("https://")]
+    return measures
+
+
 class HeatLossReporter:
-    def __init__(self, recommendations_file: Optional[str] = None):
-        path = recommendations_file or _DEFAULT_RECS
-        with open(path, "r", encoding="utf-8") as fh:
+    def __init__(self, recommendations_file: Optional[str] = None, content_file: Optional[str] = None):
+        with open(recommendations_file or _DEFAULT_RECS, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         # keys starting with "_" (e.g. "_metadata") are not spot types
         self.recommendations: Dict[str, Dict] = OrderedDict(
             (k, v) for k, v in data.items() if not k.startswith("_"))
+        with open(content_file or _DEFAULT_CONTENT, "r", encoding="utf-8") as fh:
+            self._content = json.load(fh)
 
     @property
     def spot_types(self) -> List[str]:
         return list(self.recommendations.keys())
 
-    # ------------------------------------------------------------------ findings
+    def content(self, org_name: str = "") -> Dict:
+        """The fixed wording of the report, with the organisation's name filled in."""
+        filled = _fill(self._content, org_name.strip() or "your local energy group")
+        filled["general_measures"] = _safe_links(filled.get("general_measures", []))
+        return filled
+
+    # ------------------------------------------------------------------ point text
+    @staticmethod
+    def auto_comment(spot_type: str, temperature, excess=None, severity: str = "low") -> str:
+        """The generated sentence(s) for one point."""
+        if not spot_type:
+            return ""
+        text = f"Heat loss detected at {spot_type.lower()} location"
+        try:
+            text += f": {float(temperature):.1f}°C"
+        except (TypeError, ValueError):
+            pass
+        try:
+            if excess is not None and float(excess) > 0:
+                text += f", {float(excess):.1f}°C warmer than the surrounding wall surface"
+        except (TypeError, ValueError):
+            pass
+        return text + ". " + SEVERITY_SENTENCE[normalise_severity(severity)]
+
+    def options_for(self, spot_type: str) -> List[str]:
+        """Recommendations the surveyor can add to a point of this type."""
+        rec = self.recommendations.get(spot_type) or {}
+        options = list(rec.get("advice", []))
+        if rec.get("savings"):
+            options.append(f"Typical saving: {rec['savings']}.")
+        return options
+
+    def options_by_type(self) -> Dict[str, List[str]]:
+        return {t: self.options_for(t) for t in self.recommendations}
+
     @staticmethod
     def labelled_spots(spots: List[Dict]) -> List[Dict]:
         """Only points the surveyor has given both a type and a number."""
         return [s for s in spots if s.get("type") and s.get("spot_number")]
 
-    def group_findings(self, spots: List[Dict]) -> "OrderedDict[tuple, List[Dict]]":
-        """Group by (type, number): 'Wall #1' and 'Window #1' are different findings,
-        while the same Wall #1 seen in several images is a single finding."""
-        groups: "OrderedDict[tuple, List[Dict]]" = OrderedDict()
-        for s in sorted(self.labelled_spots(spots),
-                        key=lambda x: (int(x["spot_number"]), x["type"], x["image_name"])):
-            groups.setdefault((s["type"], int(s["spot_number"])), []).append(s)
-        return groups
-
-    def build_finding(self, spot_type: str, number: int, group: List[Dict],
-                      image_notes: Dict[str, str]) -> Dict:
-        temps = [float(s["temperature"]) for s in group]
-        max_t, min_t, avg_t = max(temps), min(temps), sum(temps) / len(temps)
-        severity = max((s.get("severity", "low") for s in group),
-                       key=lambda v: SEVERITY_ORDER.index(v) if v in SEVERITY_ORDER else 0)
-
-        where = (f"at {spot_type.lower()} location" if len(group) == 1
-                 else f"at {spot_type.lower()} visible in {len(group)} images")
-        excesses = [float(s["excess"]) for s in group if s.get("excess") is not None]
-        max_excess = max(excesses) if excesses else None
-        text = (f"Heat loss detected {where}. Temperature readings range from "
-                f"{min_t:.1f}°C to {max_t:.1f}°C, averaging {avg_t:.1f}°C")
-        if max_excess is not None and max_excess > 0:
-            text += f", up to {max_excess:.1f}°C warmer than the surrounding wall surface"
-        text += ". "
-        text += {
-            "critical": "This represents a critical heat loss point requiring immediate attention.",
-            "high": "This is a significant heat loss area that should be addressed promptly.",
-            "medium": "This represents moderate heat loss that should be addressed.",
-        }.get(severity, "This is a minor heat loss point for consideration.")
-
-        images, notes, seen = [], [], set()
-        for s in group:
-            name = s["image_name"]
-            images.append({
-                "image_name": name,
-                "labeled_image": labeled_image_name(name),
-                "location": list(s.get("location", [0, 0])),
-                "temperature": float(s["temperature"]),
-                "severity": s.get("severity", "low"),
-                "image_note": image_notes.get(name, "") if name not in seen else "",
-            })
-            seen.add(name)
-            if (s.get("note") or "").strip():
-                notes.append({"image_name": name, "note": s["note"].strip()})
-
+    def build_point(self, s: Dict) -> Dict:
+        sev = normalise_severity(s.get("severity"))
+        number = int(s["spot_number"])
+        temp = float(s["temperature"])
+        excess = s.get("excess")
+        comment = (s.get("comment") or "").strip() or self.auto_comment(s["type"], temp, excess, sev)
+        extras = [str(e).strip() for e in (s.get("extras") or []) if str(e).strip()][:MAX_EXTRAS]
         return {
-            "spot_number": number,
-            "type": spot_type,
-            "title": f"Heat loss at {spot_type} #{number}",
-            "description": text,                       # AUTO comment
-            "surveyor_notes": notes,                   # freehand, per point
-            "max_temp": max_t, "min_temp": min_t, "avg_temp": avg_t, "max_excess": max_excess,
-            "severity": severity,
-            "image_count": len(set(s["image_name"] for s in group)),
-            "images": images,
-            "recommendations": self.recommendations.get(spot_type, {}),
+            "id": short_id(s["type"], number), "type": s["type"], "number": number,
+            "temperature": temp, "excess": None if excess is None else float(excess),
+            "severity": sev, "severity_label": SEVERITY_LABELS[sev],
+            "colour": SEVERITY_COLOURS[sev], "text_colour": SEVERITY_TEXT[sev],
+            "comment": comment, "extras": extras, "note": (s.get("note") or "").strip(),
+            "location": list(s.get("location", [0, 0])),
         }
-
-    # ------------------------------------------------------------------ summary
-    @staticmethod
-    def executive_summary(findings: List[Dict]) -> Dict:
-        counts = {s: 0 for s in SEVERITY_ORDER}
-        for f in findings:
-            counts[f["severity"]] = counts.get(f["severity"], 0) + 1
-        highest = next((s for s in reversed(SEVERITY_ORDER) if counts[s]), "low")
-        return {
-            "total_findings": len(findings),
-            "highest_severity": highest.capitalize(),
-            "severity_breakdown": counts,
-            "critical_count": counts["critical"],
-            "high_count": counts["high"],
-        }
-
-    @staticmethod
-    def recommendations_list(findings: List[Dict]) -> List[Dict]:
-        prio = {"high": 0, "medium": 1, "low": 2}
-        recs = []
-        for f in findings:
-            r = f.get("recommendations") or {}
-            if r:
-                recs.append({
-                    "spot_number": f["spot_number"], "type": f["type"],
-                    "advice": r.get("advice", []), "savings": r.get("savings", ""),
-                    "priority": r.get("priority", "medium"), "severity": f["severity"],
-                })
-        recs.sort(key=lambda x: (prio.get(x["priority"], 2),
-                                 -SEVERITY_ORDER.index(x["severity"])))
-        return recs
 
     # ------------------------------------------------------------------ report
     def build_report(self, batch_id: str, labels: Dict, property_address: str = "",
-                     inspector_name: str = "", now: Optional[datetime] = None) -> Dict:
+                     inspector_name: str = "", images_meta: Optional[List[Dict]] = None,
+                     org_name: str = "", now: Optional[datetime] = None) -> Dict:
+        """images_meta: [{'image_name': ..., 'scale': {...}}] in survey order. When missing,
+        the images are taken from the points, in order of first appearance."""
         now = now or datetime.now()
-        spots = labels.get("spots", [])
-        image_notes = {k: v for k, v in (labels.get("image_notes") or {}).items()}
+        spots = self.labelled_spots(labels.get("spots", []))
+        image_notes = {k: (v or "").strip() for k, v in (labels.get("image_notes") or {}).items()}
 
-        findings = [self.build_finding(t, n, g, image_notes)
-                    for (t, n), g in self.group_findings(spots).items()]
+        meta = list(images_meta or [])
+        known = {m["image_name"] for m in meta}
+        for s in spots:
+            if s["image_name"] not in known:
+                meta.append({"image_name": s["image_name"]})
+                known.add(s["image_name"])
 
+        images, counts = [], {k: 0 for k in SEVERITY_ORDER}
+        for n, m in enumerate(meta, 1):
+            name = m["image_name"]
+            points = [self.build_point(s) for s in spots if s["image_name"] == name]
+            points.sort(key=lambda p: (p["number"], p["type"]))
+            for p in points:
+                counts[p["severity"]] += 1
+            images.append({
+                "number": n, "image_name": name, "labeled_image": labeled_image_name(name),
+                "scale": m.get("scale"), "image_note": image_notes.get(name, ""), "points": points,
+            })
+
+        total = sum(counts.values())
+        highest = next((k for k in reversed(SEVERITY_ORDER) if counts[k]), "low")
         return {
-            "batch_id": batch_id,
+            "batch_id": batch_id, "org_name": org_name,
             "property_address": property_address or labels.get("property_address") or "Not specified",
             "inspector_name": inspector_name or labels.get("inspector_name") or "Not specified",
-            "survey_date": now.strftime("%Y-%m-%d"),
-            "survey_time": now.strftime("%H:%M"),
-            "general_notes": (labels.get("general_notes") or "").strip(),   # freehand, survey-wide
-            "image_notes": [
-                {"image_name": k, "labeled_image": labeled_image_name(k), "note": v.strip()}
-                for k, v in image_notes.items() if (v or "").strip()
-            ],
-            "summary": self.executive_summary(findings),
-            "findings": findings,
-            "recommendations": self.recommendations_list(findings),
+            "survey_date": now.strftime("%Y-%m-%d"), "survey_time": now.strftime("%H:%M"),
+            "general_notes": (labels.get("general_notes") or "").strip(),
+            "summary": {
+                "total_points": total, "image_count": len(images),
+                "highest_severity": SEVERITY_LABELS[highest] if total else "None",
+                "breakdown": [{"key": k, "label": SEVERITY_LABELS[k], "count": counts[k],
+                               "colour": SEVERITY_COLOURS[k], "text": SEVERITY_TEXT[k]}
+                              for k in reversed(SEVERITY_ORDER)],
+            },
+            "legend": severity_legend(),
+            "images": images,
+            "images_per_sheet": IMAGES_PER_SHEET,
+            "content": self.content(org_name),
         }

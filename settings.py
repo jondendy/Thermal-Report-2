@@ -23,17 +23,22 @@ class Settings:
     debug: bool = False
     max_upload_mb: int = 200
     batch_size: int = 8
-    sensitivity: str = "medium"          # low | medium | high
+    sensitivity: str = "medium"          # lowest | low | medium | high | highest
     max_spots: int = 8                   # automatic points kept per image (strongest first)
     secret_key: str = "change-me"
     org_name: str = ""
+    palette: str = "inferno"             # inferno | cividis | grey | camera
+    report_content_file: str = ""        # optional replacement for report_content.json
 
 
 def load_settings(env=None) -> Settings:
     env = os.environ if env is None else env
     sensitivity = str(env.get("SENSITIVITY", "medium")).lower()
-    if sensitivity not in ("low", "medium", "high"):
+    if sensitivity not in ("lowest", "low", "medium", "high", "highest"):
         sensitivity = "medium"
+    palette = str(env.get("PALETTE", "inferno")).lower().strip()
+    if palette not in ("inferno", "cividis", "grey", "camera"):
+        palette = "inferno"
     return Settings(
         host=env.get("HOST", "0.0.0.0"),
         port=_int(env, "PORT", 5000),
@@ -44,4 +49,6 @@ def load_settings(env=None) -> Settings:
         max_spots=max(1, min(_int(env, "MAX_SPOTS_PER_IMAGE", 8), 30)),
         secret_key=env.get("SECRET_KEY", "change-me"),
         org_name=env.get("ORG_NAME", ""),
+        palette=palette,
+        report_content_file=env.get("REPORT_CONTENT_FILE", ""),
     )

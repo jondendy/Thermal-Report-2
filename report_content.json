@@ -1,0 +1,62 @@
+{
+  "_help": "Edit this file to change the fixed wording of every report. {org} is replaced with ORG_NAME (or 'your local energy group'). Links must start with https://. Please check the links before use - websites reorganise.",
+  "about_title": "About this survey",
+  "about": [
+    "This survey was carried out by {org} using a thermal imaging camera. The camera shows surface temperatures, which helps to reveal where heat is escaping from a building: missing or damaged insulation, draughts, thermal bridges and poorly performing windows and doors.",
+    "It is a guide to where to look, not a substitute for a full building survey or an energy performance certificate. Results are most reliable when it is much colder outside than inside, and when walls have not been warmed by the sun."
+  ],
+  "how_to_read_title": "How to read the pictures",
+  "how_to_read": [
+    "Each picture is drawn from the camera's temperature readings. Darker colours are colder surfaces and lighter colours are warmer ones. The scale under each picture shows the temperatures it covers, which differ from picture to picture.",
+    "Marked points are places that are distinctly warmer than the wall around them. The label gives a short code (Wa = wall, Wi = window, D = door, E = eaves, V = vent, R = roof, C = chimney, P = porch) and a number, then the temperature. The same number in two pictures is the same feature.",
+    "Priority describes how much warmer the point is than the surrounding wall: low, medium, high or very high."
+  ],
+  "measures_title": "Simple ways to save energy",
+  "measures_intro": "These apply to almost every home, whatever the survey found.",
+  "general_measures": [
+    {
+      "title": "Get the most from a condensing boiler",
+      "text": "A condensing boiler is most efficient when its return water is cool enough for the flue gases to condense. Many are installed with the flow temperature set higher than they need. Ask your installer whether the flow temperature can be turned down (60 degrees C or lower often works), use the room thermostat and radiator valves to control the heat, and have the boiler serviced every year.",
+      "links": [
+        {"label": "Energy Saving Trust", "url": "https://energysavingtrust.org.uk/"}
+      ]
+    },
+    {
+      "title": "Control the heating, not the building",
+      "text": "Set the thermostat to the lowest comfortable temperature - turning it down by even a degree makes a difference. Heat only the rooms you use, bleed radiators that feel cold at the top, and keep furniture and curtains off radiators."
+    },
+    {
+      "title": "Stop draughts and keep the warmth in",
+      "text": "Draught-proof windows, doors, loft hatches and letterboxes, close curtains at dusk, and make sure the hot water cylinder and pipes are insulated. Keep ventilation where it is needed, such as kitchens and bathrooms, and do not block air bricks or extractor fans."
+    },
+    {
+      "title": "Use less hot water and electricity",
+      "text": "Shorter showers, washing clothes at 30 degrees, LED lighting and switching appliances off rather than leaving them on standby all add up. Keep stored hot water hot enough to be safe (about 60 degrees C) rather than turning the cylinder down."
+    },
+    {
+      "title": "Solar panels, batteries and heat pumps",
+      "text": "Independent advice is available before you commit. Get several quotes, and use an installer certified under the Microgeneration Certification Scheme where you want to claim a government grant or export payments.",
+      "links": [
+        {"label": "Energy Saving Trust", "url": "https://energysavingtrust.org.uk/"},
+        {"label": "Microgeneration Certification Scheme (find an installer)", "url": "https://mcscertified.com/"},
+        {"label": "GOV.UK: improve your home's energy efficiency", "url": "https://www.gov.uk/improve-energy-efficiency"}
+      ]
+    },
+    {
+      "title": "Help with bills and your energy supplier",
+      "text": "If your energy bills are a worry, free impartial advice is available, and your supplier can often fit a smart meter and explain your tariff.",
+      "links": [
+        {"label": "Citizens Advice: energy", "url": "https://www.citizensadvice.org.uk/consumer/energy/"},
+        {"label": "Ofgem", "url": "https://www.ofgem.gov.uk/"}
+      ]
+    },
+    {
+      "title": "Local help",
+      "text": "Local community groups can offer advice, loans of equipment and group buying schemes.",
+      "links": [
+        {"label": "Sustainable Chesham", "url": "https://sustainablechesham.org.uk/"}
+      ]
+    }
+  ],
+  "footer": "Prepared by {org}. This report is advisory only. Savings figures are typical estimates for UK homes and will vary."
+}

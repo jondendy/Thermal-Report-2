@@ -1,4 +1,4 @@
-"""Draw labelled heat points onto a thermal image.
+"""Draw labelled heat points onto a thermal picture.
 
 Replaces ThermalAnalyzer.label_hot_spots for the merged app because that method
 (a) assumed a 120x160 sensor, (b) used a font (arial.ttf) that does not exist on most
@@ -8,16 +8,11 @@ from __future__ import annotations
 
 import io
 import os
-from typing import Dict, Iterable, Sequence, Tuple
+from typing import Dict, Iterable, Tuple, Union
 
 from PIL import Image, ImageDraw, ImageFont
 
-SEVERITY_COLOURS = {
-    "low": "#FFFF00",
-    "medium": "#FFA500",
-    "high": "#FF4500",
-    "critical": "#FF0000",
-}
+from vocab import SEVERITY_COLOURS, SEVERITY_TEXT, normalise_severity, short_id
 
 
 def _font(size: int):
@@ -31,22 +26,23 @@ def _font(size: int):
 
 
 def spot_label(spot: Dict) -> str:
-    """'Wall #2  14.3°C' for a labelled point, '? 14.3°C' while still unlabelled."""
+    """'Wi1  11.5°C' for a defined point, '? 11.5°C' while it is still unlabelled."""
     temp = spot.get("temperature")
     temp_txt = f"{float(temp):.1f}°C" if temp is not None else ""
     if spot.get("type") and spot.get("spot_number"):
-        return f"{spot['type']} #{spot['spot_number']}  {temp_txt}".strip()
+        return f"{short_id(spot['type'], spot['spot_number'])}  {temp_txt}".strip()
     return f"? {temp_txt}".strip()
 
 
-def render_labeled_image(image_path: str, array_shape: Tuple[int, int],
+def render_labeled_image(image: Union[str, Image.Image], array_shape: Tuple[int, int],
                          spots: Iterable[Dict]) -> Image.Image:
-    """Return a copy of the image with every spot marked.
+    """Return a copy of the picture with every spot marked.
 
-    ``spot['location']`` is (row, col) in the temperature array, whose shape is
-    ``array_shape``; it is scaled up to the pixel size of the picture.
+    ``image`` is a file path or an already-open PIL image. ``spot['location']`` is
+    (row, col) in the temperature array, whose shape is ``array_shape``; it is scaled up to
+    the pixel size of the picture.
     """
-    img = Image.open(image_path).convert("RGB")
+    img = (Image.open(image) if isinstance(image, str) else image).convert("RGB")
     spots = list(spots)
     draw = ImageDraw.Draw(img)
     rows, cols = array_shape
@@ -58,13 +54,17 @@ def render_labeled_image(image_path: str, array_shape: Tuple[int, int],
     for spot in spots:
         row, col = spot["location"]
         x, y = int(col * sx), int(row * sy)
-        colour = SEVERITY_COLOURS.get(spot.get("severity", "medium"), "#FF0000")
+        sev = normalise_severity(spot.get("severity"), "medium")
+        colour, ink = SEVERITY_COLOURS[sev], SEVERITY_TEXT[sev]
         arm = max(8, img.width // 60)
+        radius = arm + small
+        # white halo first, so the marker stays visible on both dark and light parts of the scale
+        draw.line([(x - arm, y), (x + arm, y)], fill="white", width=5)
+        draw.line([(x, y - arm), (x, y + arm)], fill="white", width=5)
+        draw.ellipse([(x - radius, y - radius), (x + radius, y + radius)], outline="white", width=5)
         draw.line([(x - arm, y), (x + arm, y)], fill=colour, width=2)
         draw.line([(x, y - arm), (x, y + arm)], fill=colour, width=2)
-        radius = arm + small
-        draw.ellipse([(x - radius, y - radius), (x + radius, y + radius)],
-                     outline=colour, width=2)
+        draw.ellipse([(x - radius, y - radius), (x + radius, y + radius)], outline=colour, width=2)
 
         text = spot_label(spot)
         box = draw.textbbox((0, 0), text, font=font)
@@ -80,8 +80,8 @@ def render_labeled_image(image_path: str, array_shape: Tuple[int, int],
                 break
             ty = min(max(2, ty + step), max(2, img.height - h - 6))
         placed.append((tx - 3, ty - 3, tx + w + 3, ty + h + 5))
-        draw.rectangle([(tx - 3, ty - 3), (tx + w + 3, ty + h + 5)], fill="black")
-        draw.text((tx, ty), text, fill=colour, font=font)
+        draw.rectangle([(tx - 3, ty - 3), (tx + w + 3, ty + h + 5)], fill=colour, outline="white")
+        draw.text((tx, ty), text, fill=ink, font=font)
 
     banner = f"Heat points: {len(spots)}"
     box = draw.textbbox((8, 8), banner, font=font)

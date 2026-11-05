@@ -9,10 +9,14 @@ survey report. Runs on any server and stores its files on local disk, a **WebDAV
    wall are detected automatically (see *How warm areas are found* below).
 2. **Define points** (`/edit_spots/<batch>`): give each point a *type* (Window, Wall, ...) and a *number*
    (same number in two images = the same feature). Missed something? **Click the picture** to add a point; its
-   temperature is read from the thermal data.
-3. **Add notes** in your own words at three levels: whole survey, each image, each point.
-4. **Generate the report.** For every finding it shows the comment generated from your point definition
-   (severity, temperatures, recommendations) *and* your freehand notes, plus the labelled pictures.
+   temperature is read from the thermal data. Too many or too few automatic points? Choose **Fewest...Most** and
+   *Re-detect points* (points you added and all notes are kept).
+3. **Edit what the report will say.** Under every point a dashed box shows the exact report text: the generated
+   comment (editable, with *Reset*), recommendations picked from a per-type list (each editable), and your own
+   note. There are also notes for the whole survey and for each picture.
+4. **Generate the report.** Page 1: property, summary, about the survey and how to read the pictures. Then
+   the thermal pictures four to a page with every point catalogued underneath. Last page: simple energy-saving
+   measures with links. All fixed wording lives in `report_content.json` - edit it to suit your group.
 
 ## Run it
 
@@ -27,6 +31,15 @@ gunicorn --bind 0.0.0.0:5000 --workers 2 --timeout 300 wsgi:app    # production
 
 Docker: `docker build -t thermal-report . && docker run -p 5000:5000 -v $PWD/data:/app/data thermal-report`
 
+## Picture colours
+
+The camera bakes its own colour scheme into each JPEG, so surveys taken with different camera settings
+look completely different. The app therefore **draws the thermal picture itself from the temperature
+readings** in one fixed scale: dark (cold) to light (warm), `inferno` by default, which stays readable with
+all common kinds of colour blindness (no green/red). Each picture has a scale bar showing its own temperature
+range. Marker colours use the same scale. `PALETTE` can be `cividis`, `grey`, or `camera` (keep the camera's own
+picture). Priority names are Low / Medium / High / Very high.
+
 ## How warm areas are found
 
 An area is flagged when it is clearly warmer than **the building surface in the same picture**:
@@ -38,10 +51,10 @@ An area is flagged when it is clearly warmer than **the building surface in the 
    never placed on the outer frame, and the strongest are kept (`MAX_SPOTS_PER_IMAGE`).
 
 Each point shows its temperature and **how many degrees warmer than the wall it is** (also used in the report
-comment). Severity follows that difference: under 2 degC low, 2+ medium, 4+ high, 8+ critical. Clicking on a
-picture to add a point uses the same scale. `SENSITIVITY` (`low` / `medium` / `high`) sets how distinct an area
-must be; on the six sample photos `medium` finds 1-8 points per image, mostly eaves, rooflines and window/door
-frames, plus a 16 degC window hot spot.
+comment). Priority follows that difference: under 2 degC low, 2+ medium, 4+ high, 8+ very high. Clicking on a
+picture to add a point uses the same scale. `SENSITIVITY` (`lowest` ... `highest`, shown as Fewest ... Most) sets
+how distinct an area must be, and can be changed per survey; on the six sample photos the standard level finds
+1-8 points per image, mostly eaves, rooflines and window/door frames, plus a 16 degC window hot spot.
 
 ## Storage
 
@@ -59,7 +72,7 @@ class implementing seven small methods.
 ## Tests
 
 ```bash
-pytest                                            # 51 tests, no photos or exiftool needed
+pytest                                            # 65 tests, no photos or exiftool needed
 THERMAL_TEST_IMAGES=/path/to/flir pytest          # also runs the real FLIR extraction tests
 ```
 
@@ -101,7 +114,9 @@ which fails offline and on read-only hosts.
 - **Detection is relative to the wall.** A building that is warm all over (e.g. a whole elevation lit by
   the sun or an uninsulated gable) has nothing "distinctly warmer" than itself, so it can find few points;
   that is a real limit of comparing a wall with itself. Use click-to-add for anything the detector misses.
-- Batches processed before this change keep their old automatic points; re-upload their images to re-detect.
+- Batches processed before this change keep their old automatic points (use *Re-detect points* on the points
+  page to redo them). Reports made by older versions must be generated again.
+- The links on the last report page are root pages of well-known sites; check them and edit `report_content.json`.
 - **SMB** is implemented on `smbprotocol` but has only been tested at path-logic level (no SMB server was available).
   **WebDAV** is tested against wsgidav, not yet against Nextcloud/Synology.
 - No PDF export yet (the report page has print styles: use the browser's *Print to PDF*).

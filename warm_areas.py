@@ -35,14 +35,16 @@ EDGE_MARGIN = 2          # pixels
 # k          : ... nor less than k x the wall's own warm-side scatter (so a naturally patchy
 #              wall needs a bigger step than a smooth one)
 # min_area   : smallest area, in thermal pixels, worth reporting
-PRESETS: Dict[str, Dict[str, float]] = {
-    "low":    {"min_excess": 2.0, "k": 3.0, "min_area": 6},
-    "medium": {"min_excess": 1.3, "k": 1.5, "min_area": 4},
-    "high":   {"min_excess": 0.9, "k": 1.0, "min_area": 3},
+PRESETS: Dict[str, Dict[str, float]] = {          # fewest points  ->  most points
+    "lowest":  {"min_excess": 3.0, "k": 4.0, "min_area": 8},
+    "low":     {"min_excess": 2.0, "k": 3.0, "min_area": 6},
+    "medium":  {"min_excess": 1.3, "k": 1.5, "min_area": 4},
+    "high":    {"min_excess": 0.9, "k": 1.0, "min_area": 3},
+    "highest": {"min_excess": 0.7, "k": 0.8, "min_area": 3},
 }
 
 # degrees above the building baseline -> severity
-SEVERITY_STEPS: List[Tuple[float, str]] = [(8.0, "critical"), (4.0, "high"), (2.0, "medium")]
+SEVERITY_STEPS: List[Tuple[float, str]] = [(8.0, "very_high"), (4.0, "high"), (2.0, "medium")]
 
 
 def classify_excess(excess_c: float) -> str:

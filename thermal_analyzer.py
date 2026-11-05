@@ -29,7 +29,7 @@ class HotSpot:
         self.location = location  # (row, col) in temperature array
         self.temperature = temperature
         self.area_size = area_size  # number of pixels in hot spot
-        self.severity = severity  # 'low', 'medium', 'high', 'critical'
+        self.severity = severity  # 'low', 'medium', 'high', 'very_high'
         self.description = ""
         self.likely_cause = ""
     
@@ -222,7 +222,7 @@ class ThermalAnalyzer:
         delta = temp - mean
         
         if delta > 3 * std:
-            return 'critical'
+            return 'very_high'
         elif delta > 2 * std:
             return 'high'
         elif delta > std:
@@ -263,7 +263,7 @@ class ThermalAnalyzer:
             'low': '#FFFF00',      # Yellow
             'medium': '#FFA500',   # Orange
             'high': '#FF4500',     # Orange-Red
-            'critical': '#FF0000'  # Red
+            'very_high': '#F4E156'  # Pale yellow (end of the inferno scale)
         }
         
         # Calculate scaling between thermal array and visual image
@@ -302,7 +302,7 @@ class ThermalAnalyzer:
             draw.text(label_pos, label, fill=color, font=font)
             
             # Add severity indicator
-            severity_label = f"[{spot.severity.upper()}]"
+            severity_label = f"[{spot.severity.replace('_', ' ').upper()}]"
             severity_pos = (col + 15, row + 5)
             draw.text(severity_pos, severity_label, fill=color, font=small_font)
         
@@ -336,7 +336,7 @@ class ThermalAnalyzer:
         causes = []
         
         # Assess based on severity
-        if hot_spot.severity == 'critical':
+        if hot_spot.severity == 'very_high':
             causes.append("Significant thermal anomaly detected")
             if hot_spot.area_size > 100:
                 causes.append("Large area suggests major insulation failure or active heat source")
@@ -386,7 +386,7 @@ class ThermalAnalyzer:
         """
         
         # Sort hot spots by severity and temperature
-        severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+        severity_order = {'very_high': 0, 'high': 1, 'medium': 2, 'low': 3}
         sorted_spots = sorted(hot_spots, 
                             key=lambda x: (severity_order[x.severity], -x.temperature))
         
