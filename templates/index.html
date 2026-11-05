@@ -11,10 +11,10 @@
         h1 { color: #333; margin-bottom: 10px; }
         .subtitle { color: #666; margin-bottom: 30px; }
         .upload-section { background: #f9f9f9; padding: 30px; border-radius: 8px; margin-bottom: 40px; border: 2px dashed #ddd; }
-        .upload-section.drag-over { border-color: #4CAF50; background: #e8f5e9; }
+        .upload-section.drag-over { border-color: #3b6ea5; background: #e8f0f8; }
         #fileInput { display: none; }
-        .upload-btn { background: #4CAF50; color: white; padding: 12px 30px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
-        .upload-btn:hover { background: #45a049; }
+        .upload-btn { background: #3b6ea5; color: white; padding: 12px 30px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        .upload-btn:hover { background: #2f5a8a; }
         .process-btn { background: #FF9800; }
         .process-btn:hover { background: #F57C00; }
         .file-list { margin-top: 20px; }
@@ -61,6 +61,13 @@
             <input type="file" id="fileInput" multiple accept=".jpg,.jpeg" />
             <button class="upload-btn" onclick="document.getElementById('fileInput').click()">Select Images</button>
             <button class="upload-btn process-btn" onclick="uploadFiles()" style="margin-left:10px;">Process Batch</button>
+            <p style="margin-top:14px;">
+                <label for="sensitivity"><strong>Points to mark automatically:</strong></label>
+                <select id="sensitivity" style="padding:6px; margin-left:6px;">
+                    {% for s in sensitivities %}<option value="{{ s.key }}"{% if s.key == default_sensitivity %} selected{% endif %}>{{ s.label }}</option>{% endfor %}
+                </select>
+                <small style="color:#666;"> Fewest = only the strongest warm areas; Most = also subtle ones. You can change this later on the points page.</small>
+            </p>
             
             <div class="file-list" id="fileList"></div>
             <progress id="progress" max="100" value="0"></progress>
@@ -195,6 +202,7 @@
 
             const formData = new FormData();
             selectedFiles.forEach(file => formData.append('files[]', file));
+            formData.append('sensitivity', document.getElementById('sensitivity').value);
 
             progress.style.display = 'block';
             progress.value = 0;

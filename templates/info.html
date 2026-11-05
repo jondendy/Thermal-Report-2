@@ -72,10 +72,11 @@
             color: #667eea;
             margin-top: 0;
         }
-        .severity-low { color: #FFD700; font-weight: bold; }
-        .severity-medium { color: #FFA500; font-weight: bold; }
-        .severity-high { color: #FF4500; font-weight: bold; }
-        .severity-critical { color: #FF0000; font-weight: bold; }
+        .severity-low { color: #420A68; font-weight: bold; }
+        .severity-medium { color: #A82E5F; font-weight: bold; }
+        .severity-high { color: #C2570A; font-weight: bold; }
+        .severity-very_high { color: #7A6A00; font-weight: bold; }
+        .swatch { display: inline-block; width: 14px; height: 14px; border: 1px solid #555; vertical-align: middle; }
         .code-block {
             background: #2d2d2d;
             color: #f8f8f2;
@@ -227,37 +228,39 @@
     <div class="section" id="interpretation">
         <h2>📖 Interpreting Your Thermal Reports</h2>
 
-        <h3>Hot Spot Severity Levels</h3>
+        <h3>Priority levels</h3>
+        <p>Each point is graded by how many degrees warmer it is than the wall around it. The colours are the
+        same dark-to-light scale used in the thermal pictures, and do not depend on telling green from red.</p>
         <table>
             <tr>
-                <th>Severity</th>
-                <th>Color</th>
-                <th>Meaning</th>
-                <th>Action Required</th>
+                <th>Priority</th>
+                <th>Marker colour</th>
+                <th>Warmer than the wall by</th>
+                <th>Action</th>
             </tr>
             <tr>
-                <td><span class="severity-critical">CRITICAL</span></td>
-                <td>🔴 Red</td>
-                <td>Temperature >3 standard deviations above mean</td>
-                <td><strong>Immediate investigation required</strong> - Major thermal issue</td>
+                <td><span class="severity-very_high">VERY HIGH</span></td>
+                <td><span class="swatch" style="background:#F4E156"></span> Pale yellow</td>
+                <td>8&deg;C or more</td>
+                <td><strong>Investigate first</strong> - likely missing insulation or an active heat source</td>
             </tr>
             <tr>
                 <td><span class="severity-high">HIGH</span></td>
-                <td>🟠 Orange-Red</td>
-                <td>Temperature 2-3 std devs above mean</td>
-                <td>Schedule detailed inspection within 2 weeks</td>
+                <td><span class="swatch" style="background:#F37819"></span> Orange</td>
+                <td>4 to 8&deg;C</td>
+                <td>Address promptly</td>
             </tr>
             <tr>
                 <td><span class="severity-medium">MEDIUM</span></td>
-                <td>🟧 Orange</td>
-                <td>Temperature 1-2 std devs above mean</td>
-                <td>Monitor area, investigate during routine maintenance</td>
+                <td><span class="swatch" style="background:#A82E5F"></span> Magenta</td>
+                <td>2 to 4&deg;C</td>
+                <td>Address when convenient</td>
             </tr>
             <tr>
                 <td><span class="severity-low">LOW</span></td>
-                <td>🟡 Yellow</td>
-                <td>Temperature <1 std dev above mean</td>
-                <td>Document for reference, likely normal variation</td>
+                <td><span class="swatch" style="background:#420A68"></span> Dark purple</td>
+                <td>Under 2&deg;C</td>
+                <td>Note for reference; often normal variation</td>
             </tr>
         </table>
 
@@ -266,7 +269,7 @@
         <div class="workflow-step">
             <strong>Large Area Hot Spots (>100 pixels)</strong>
             <ul>
-                <li><strong>Critical:</strong> Major insulation failure, missing insulation, or active heat source</li>
+                <li><strong>Very high:</strong> Major insulation failure, missing insulation, or active heat source</li>
                 <li><strong>High/Medium:</strong> Thermal bridging through studs, insulation compression</li>
             </ul>
         </div>
@@ -274,7 +277,7 @@
         <div class="workflow-step">
             <strong>Localized Hot Spots (<50 pixels)</strong>
             <ul>
-                <li><strong>Critical:</strong> Electrical issue, severe air leak, pipe penetration</li>
+                <li><strong>Very high:</strong> Electrical issue, severe air leak, pipe penetration</li>
                 <li><strong>High/Medium:</strong> Air infiltration point, small gap, fastener thermal bridge</li>
             </ul>
         </div>

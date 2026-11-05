@@ -6,64 +6,88 @@
     <title>Define Heat Points - {{ batch_id }}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px 20px 90px; color: #333; }
-        a { color: #667eea; }
+        body { font-family: Arial, sans-serif; background: #f2f4f7; padding: 20px 20px 90px; color: #2b2f36; }
+        a { color: #3b6ea5; }
         .card { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
         h1 { margin-bottom: 8px; }
-        .hint { color: #666; font-size: 13px; margin-top: 6px; }
-        .stats { display: flex; gap: 30px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
+        .hint { color: #5d6570; font-size: 13px; margin-top: 6px; line-height: 1.45; }
+        .stats { display: flex; gap: 30px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #e3e6ea; flex-wrap: wrap; }
         .stat { display: flex; flex-direction: column; }
-        .stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
-        .stat-value { font-size: 24px; font-weight: bold; color: #007bff; }
+        .stat-label { font-size: 12px; color: #5d6570; text-transform: uppercase; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #3b6ea5; }
         .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 15px 0 10px; }
-        label.field { display: block; font-size: 12px; font-weight: bold; color: #555; text-transform: uppercase; margin-bottom: 4px; }
-        input[type=text], textarea, select, input[type=number] { width: 100%; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; font-size: 14px; font-family: inherit; }
+        label.field { display: block; font-size: 12px; font-weight: bold; color: #4a515b; text-transform: uppercase; margin-bottom: 4px; }
+        input[type=text], textarea, select, input[type=number] { width: 100%; padding: 8px; border: 1px solid #c3c9d1; border-radius: 4px; font-size: 14px; font-family: inherit; background: #fff; }
         textarea { min-height: 70px; resize: vertical; }
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(520px, 1fr)); gap: 20px; }
+        .detect { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid #e3e6ea; }
+        .detect select { width: auto; }
+        .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 20px; }
         .image-panel { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,.1); }
-        .image-title { padding: 12px 15px; background: #f8f9fa; font-weight: bold; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; }
-        .image-title small { font-weight: normal; color: #666; }
+        .image-title { padding: 12px 15px; background: #eef1f5; font-weight: bold; border-bottom: 1px solid #d8dde3; display: flex; justify-content: space-between; }
+        .image-title small { font-weight: normal; color: #5d6570; }
         .image-wrap { position: relative; background: #000; cursor: crosshair; line-height: 0; }
         .image-wrap img { width: 100%; display: block; user-select: none; -webkit-user-drag: none; }
-        .marker { position: absolute; transform: translate(-50%, -50%); min-width: 22px; height: 22px; padding: 0 4px; border-radius: 11px; border: 2px solid #fff; color: #000; font: bold 11px/18px Arial; text-align: center; pointer-events: none; box-shadow: 0 0 3px #000; }
+        .scale { display: flex; align-items: center; gap: 8px; padding: 6px 15px; font-size: 12px; color: #4a515b; background: #fafbfc; border-bottom: 1px solid #e3e6ea; }
+        .scale .bar { flex: 1; height: 10px; border-radius: 5px; border: 1px solid #9aa3ad; }
+        .marker { position: absolute; transform: translate(-50%, -50%); min-width: 24px; height: 24px; padding: 0 5px; border-radius: 12px; border: 2px solid #fff; font: bold 11px/20px Arial; text-align: center; pointer-events: none; box-shadow: 0 0 3px #000; }
         .marker.manual { border-style: dashed; }
-        .sev-critical { background: #dc3545; color: #fff; } .sev-high { background: #fd7e14; color: #fff; }
-        .sev-medium { background: #ffc107; } .sev-low { background: #28a745; color: #fff; }
-        .spots { padding: 12px 15px; max-height: 460px; overflow-y: auto; }
-        .spot-row { display: grid; grid-template-columns: 90px 1fr 70px 100px; gap: 8px; padding: 8px; margin-bottom: 8px; background: #f8f9fa; border-radius: 4px; align-items: center; }
-        .spot-row .note { grid-column: 1 / -1; }
+        .spots { padding: 12px 15px; }
+        .spot-card { padding: 10px; margin-bottom: 12px; background: #f6f7f9; border: 1px solid #e3e6ea; border-radius: 6px; }
+        .spot-head { display: grid; grid-template-columns: 1fr 120px 64px 110px; gap: 8px; align-items: center; margin-bottom: 8px; }
         .spot-id { font-weight: bold; font-size: 13px; }
-        .spot-id small { display: block; font-weight: normal; color: #666; }
-        .tag { font-size: 10px; text-transform: uppercase; background: #e2e3f7; color: #4a4fa0; padding: 1px 6px; border-radius: 8px; }
-        .del { grid-column: 1 / -1; justify-self: end; background: none; border: none; color: #dc3545; cursor: pointer; font-size: 12px; }
-        .empty { padding: 14px; text-align: center; color: #666; font-style: italic; }
+        .spot-id small { display: block; font-weight: normal; color: #5d6570; }
+        .tag { font-size: 10px; text-transform: uppercase; background: #dfe7f1; color: #2f5a8a; padding: 1px 6px; border-radius: 8px; }
+        .row-label { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: bold; color: #4a515b; text-transform: uppercase; margin: 8px 0 3px; }
+        .row-label button, .del { background: none; border: none; color: #2f5a8a; cursor: pointer; font-size: 12px; text-decoration: underline; text-transform: none; font-weight: normal; }
+        .del { color: #a8323e; }
+        .comment { min-height: 62px; }
+        .extra { display: flex; gap: 6px; margin-top: 5px; }
+        .extra input { flex: 1; }
+        .extra button { border: 1px solid #c3c9d1; background: #fff; border-radius: 4px; cursor: pointer; width: 32px; }
+        .preview { margin-top: 10px; padding: 9px 11px; background: #fff; border: 1px dashed #8fa3b8; border-radius: 6px; font-size: 13px; line-height: 1.45; }
+        .preview .ph { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #5d6570; margin-bottom: 4px; }
+        .preview ul { margin: 4px 0 0 18px; }
+        .preview .nt { font-style: italic; color: #4a515b; margin-top: 4px; }
+        .chip { display: inline-block; min-width: 28px; text-align: center; padding: 1px 7px; border-radius: 10px; font-weight: bold; font-size: 12px; margin-right: 6px; border: 1px solid #fff; box-shadow: 0 0 0 1px #8a929c; }
+        .empty { padding: 14px; text-align: center; color: #5d6570; font-style: italic; }
         .image-note { padding: 0 15px 15px; }
         .action-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; padding: 12px 20px; box-shadow: 0 -2px 10px rgba(0,0,0,.1); display: flex; justify-content: space-between; align-items: center; z-index: 1000; }
         .btn { padding: 11px 22px; border: none; border-radius: 4px; font-size: 15px; cursor: pointer; color: #fff; margin-left: 8px; }
-        .btn-primary { background: #007bff; } .btn-success { background: #28a745; } .btn-secondary { background: #6c757d; margin-left: 0; }
+        .btn-primary { background: #3b6ea5; } .btn-success { background: #1f3a5f; } .btn-secondary { background: #6c757d; margin-left: 0; }
+        .btn-small { padding: 8px 14px; font-size: 13px; margin-left: 0; }
         .status-message { padding: 8px 14px; border-radius: 4px; font-weight: bold; }
-        .status-success { background: #d4edda; color: #155724; } .status-error { background: #f8d7da; color: #721c24; }
+        .status-success { background: #dde9f5; color: #1f3a5f; } .status-error { background: #f6dde0; color: #7a1f29; }
+        @media (max-width: 640px) { .grid-container { grid-template-columns: 1fr; } .spot-head { grid-template-columns: 1fr 1fr; } .meta { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
     <div class="card">
-        <h1>Define Heat Points &amp; Add Notes</h1>
+        <h1>Define Heat Points &amp; Edit the Report Text</h1>
         <p><a href="/">&larr; Home</a> &nbsp;|&nbsp; <strong>Batch:</strong> {{ batch_id }}</p>
         <p class="hint">
-            Give each detected point a <b>type</b> and a <b>number</b> (the same number across images means the same feature).
-            Missed something? <b>Click on the picture</b> to add your own point &mdash; its temperature is read from the thermal data.
-            The report combines the comments generated from your point definitions with the freehand notes you write here.
+            Give each point a <b>type</b> and <b>number</b> (the same number in two pictures means the same feature).
+            Under each point, the dashed box shows <b>exactly what the report will say</b>. Edit the generated comment,
+            add recommendations from the list, or write your own note. <b>Click a picture</b> to add a point it missed.
+            Darker colours in the pictures are colder; lighter colours are warmer.
         </p>
         <div class="meta">
             <div><label class="field" for="address">Property address</label><input type="text" id="address"></div>
             <div><label class="field" for="inspector">Inspector / surveyor</label><input type="text" id="inspector"></div>
         </div>
-        <label class="field" for="generalNotes">General survey notes (freehand &mdash; appear near the top of the report)</label>
+        <label class="field" for="generalNotes">General survey notes (freehand &mdash; appear on the first page of the report)</label>
         <textarea id="generalNotes" placeholder="Weather, conditions during the survey, access limits, anything the report should say overall..."></textarea>
+
+        <div class="detect">
+            <label class="field" for="sens" style="margin:0;">Points marked automatically</label>
+            <select id="sens">{% for s in sensitivities %}<option value="{{ s.key }}">{{ s.label }}</option>{% endfor %}</select>
+            <button class="btn btn-primary btn-small" onclick="redetect()">Re-detect points</button>
+            <span class="hint" style="margin:0;">Choose Fewer if there are too many points, More if some are missed. Points you added by clicking, and all notes, are kept.</span>
+        </div>
+
         <div class="stats">
             <div class="stat"><span class="stat-label">Images</span><span class="stat-value" id="imgCount">0</span></div>
             <div class="stat"><span class="stat-label">Points</span><span class="stat-value" id="totalSpots">0</span></div>
-            <div class="stat"><span class="stat-label">Defined (type + number)</span><span class="stat-value" id="labeledCount">0</span></div>
+            <div class="stat"><span class="stat-label">In the report (type + number)</span><span class="stat-value" id="labeledCount">0</span></div>
         </div>
     </div>
 
@@ -82,7 +106,10 @@
         const BATCH = {{ batch_id|tojson }};
         const STATE = {{ state|tojson }};
         const TYPES = {{ spot_types|tojson }};
-        const SEVS = ['low', 'medium', 'high', 'critical'];
+        const ABBR = {{ abbr|tojson }};
+        const OPTIONS = {{ options|tojson }};
+        const SEVS = {{ severities|tojson }};
+        const SEV = Object.fromEntries(SEVS.map(s => [s.key, s]));
 
         function el(tag, attrs, ...kids) {
             const e = document.createElement(tag);
@@ -101,58 +128,143 @@
             document.getElementById('labeledCount').textContent = defined;
         }
 
-        const ABBR = { Wall: 'Wa', Window: 'Wi', Door: 'D', Eaves: 'E', Vent: 'V', Roof: 'R', Chimney: 'C', Porch: 'P' };
-        function markerText(s, idx) { return (s.type && s.spot_number) ? (ABBR[s.type] || s.type[0]) + s.spot_number : String(idx + 1); }
+        const shortId = s => (ABBR[s.type] || (s.type || '?')[0]) + s.spot_number;
+        function markerText(s, idx) { return (s.type && s.spot_number) ? shortId(s) : String(idx + 1); }
         function nextNumber() { let m = 0; STATE.images.forEach(i => i.spots.forEach(s => { if (s.spot_number > m) m = s.spot_number; })); return m + 1; }
+        function sevOf(s) { return SEV[s.severity] || SEV.medium; }
+        function reportComment(s) { return s.comment_custom ? (s.comment || '') : (s.auto_comment || ''); }
 
         function drawMarkers(img, wrap) {
             wrap.querySelectorAll('.marker').forEach(m => m.remove());
             const [rows, cols] = img.shape;
             img.spots.forEach((s, idx) => {
-                const m = el('div', { class: 'marker sev-' + s.severity + (s.source === 'manual' ? ' manual' : ''), text: markerText(s, idx),
+                const c = sevOf(s);
+                const m = el('div', { class: 'marker' + (s.source === 'manual' ? ' manual' : ''), text: markerText(s, idx),
                                       title: (s.type || 'Unlabelled') + ' ' + s.temperature + '°C' });
+                m.style.background = c.colour; m.style.color = c.text;
                 m.style.left = (s.location[1] + 0.5) / cols * 100 + '%';
                 m.style.top = (s.location[0] + 0.5) / rows * 100 + '%';
                 wrap.appendChild(m);
             });
         }
 
-        function spotRow(img, s, idx, wrap, panelRefresh) {
-            const typeSel = el('select', { onchange: e => { s.type = e.target.value; drawMarkers(img, wrap); stats(); } },
-                el('option', { value: '', text: '-- type --' }), ...TYPES.map(t => el('option', { value: t, text: t })));
-            typeSel.value = s.type || '';
-            const num = el('input', { type: 'number', min: 1, max: 99, placeholder: '#',
-                                      oninput: e => { s.spot_number = e.target.value ? parseInt(e.target.value, 10) : null; drawMarkers(img, wrap); stats(); } });
-            if (s.spot_number) num.value = s.spot_number;
-            const sev = el('select', { onchange: e => { s.severity = e.target.value; drawMarkers(img, wrap); } },
-                ...SEVS.map(v => el('option', { value: v, text: v })));
-            sev.value = s.severity;
-            const note = el('input', { type: 'text', class: 'note', placeholder: 'Freehand note for this point (optional)',
-                                       oninput: e => { s.note = e.target.value; } });
-            note.value = s.note || '';
-            const row = el('div', { class: 'spot-row' },
-                el('div', { class: 'spot-id' }, document.createTextNode('Point ' + (idx + 1)),
-                    el('small', { text: s.temperature + '°C' + (s.excess != null ? ' (' + (s.excess >= 0 ? '+' : '') + s.excess + ' vs wall) ' : ' ') }, el('span', { class: 'tag', text: s.source }))),
-                typeSel, num, sev, note);
-            if (s.source === 'manual') {
-                row.appendChild(el('button', { class: 'del', text: 'Remove this point', onclick: () => {
-                    img.spots.splice(idx, 1); panelRefresh(); stats(); } }));
+        async function refreshAuto(s) {
+            if (!s.type) { s.auto_comment = ''; return; }
+            try {
+                const r = await fetch('/api/point_text', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: s.type, temperature: s.temperature, excess: s.excess, severity: s.severity }) });
+                s.auto_comment = (await r.json()).comment || '';
+            } catch (e) { /* keep the previous text */ }
+        }
+
+        function renderPreview(box, s) {
+            box.replaceChildren(el('div', { class: 'ph', text: 'This is what the report will say' }));
+            if (!(s.type && s.spot_number)) {
+                box.appendChild(el('div', { class: 'nt', text: 'Choose a type and a number - until then this point is left out of the report.' }));
+                return;
             }
-            return row;
+            const c = sevOf(s);
+            const chip = el('span', { class: 'chip', text: shortId(s) }); chip.style.background = c.colour; chip.style.color = c.text;
+            const above = s.excess != null && s.excess > 0 ? ' (+' + s.excess + '°C above the wall)' : '';
+            box.appendChild(el('div', {}, chip, el('b', { text: s.type }),
+                document.createTextNode(' · ' + s.temperature + '°C' + above + ' · ' + c.label + ' priority')));
+            if (reportComment(s).trim()) box.appendChild(el('div', { text: reportComment(s) }));
+            const extras = (s.extras || []).filter(x => x.trim());
+            if (extras.length) box.appendChild(el('ul', {}, ...extras.map(x => el('li', { text: x }))));
+            if ((s.note || '').trim()) box.appendChild(el('div', { class: 'nt', text: 'Surveyor note: ' + s.note }));
+        }
+
+        function spotCard(img, s, idx, wrap, panelRefresh) {
+            const preview = el('div', { class: 'preview' });
+            const upd = () => renderPreview(preview, s);
+
+            // --- type / number / priority
+            const typeSel = el('select', {}, el('option', { value: '', text: '-- type --' }), ...TYPES.map(t => el('option', { value: t, text: t })));
+            typeSel.value = s.type || '';
+            typeSel.addEventListener('change', async e => {
+                const old = s.type; s.type = e.target.value;
+                const oldOpts = OPTIONS[old] || [];                   // drop recommendations that belonged to the old type
+                s.extras = (s.extras || []).filter(x => !oldOpts.includes(x));
+                await refreshAuto(s); panelRefresh(); stats();
+            });
+            const num = el('input', { type: 'number', min: 1, max: 99, placeholder: '#' });
+            if (s.spot_number) num.value = s.spot_number;
+            num.addEventListener('input', e => { s.spot_number = e.target.value ? parseInt(e.target.value, 10) : null; drawMarkers(img, wrap); stats(); upd(); });
+            const sev = el('select', {}, ...SEVS.map(v => el('option', { value: v.key, text: v.label })));
+            sev.value = s.severity;
+            sev.addEventListener('change', async e => { s.severity = e.target.value; await refreshAuto(s); panelRefresh(); });
+
+            // --- generated comment, editable
+            const comment = el('textarea', { class: 'comment' });
+            comment.value = reportComment(s);
+            const reset = el('button', { text: 'Reset to the generated text', onclick: async () => {
+                s.comment_custom = false; s.comment = ''; await refreshAuto(s); panelRefresh(); } });
+            reset.style.display = s.comment_custom ? '' : 'none';
+            comment.addEventListener('input', e => { s.comment = e.target.value; s.comment_custom = true; reset.style.display = ''; upd(); });
+
+            // --- recommendations picked from the list, each editable
+            const extrasBox = el('div');
+            const renderExtras = () => {
+                extrasBox.replaceChildren();
+                (s.extras || []).forEach((x, i) => {
+                    const inp = el('input', { type: 'text' }); inp.value = x;
+                    inp.addEventListener('input', e => { s.extras[i] = e.target.value; upd(); });
+                    extrasBox.appendChild(el('div', { class: 'extra' }, inp,
+                        el('button', { title: 'Remove', text: '✕', onclick: () => { s.extras.splice(i, 1); renderExtras(); upd(); } })));
+                });
+            };
+            const avail = (OPTIONS[s.type] || []).filter(o => !(s.extras || []).includes(o));
+            const add = el('select', {}, el('option', { value: '', text: s.type ? '+ Add a recommendation...' : 'Choose a type first' }),
+                ...avail.map(o => el('option', { value: o, text: o.length > 90 ? o.slice(0, 88) + '...' : o })),
+                s.type ? el('option', { value: '__own', text: 'Write my own...' }) : null);
+            add.disabled = !s.type;
+            add.addEventListener('change', e => {
+                const v = e.target.value; if (!v) return;
+                (s.extras = s.extras || []).push(v === '__own' ? '' : v);
+                panelRefresh();
+            });
+
+            // --- freehand note
+            const note = el('input', { type: 'text', placeholder: 'Freehand note for this point (optional)' });
+            note.value = s.note || '';
+            note.addEventListener('input', e => { s.note = e.target.value; upd(); });
+
+            const card = el('div', { class: 'spot-card' },
+                el('div', { class: 'spot-head' },
+                    el('div', { class: 'spot-id' }, document.createTextNode('Point ' + (idx + 1)),
+                        el('small', { text: s.temperature + '°C' + (s.excess != null ? ' (' + (s.excess >= 0 ? '+' : '') + s.excess + ' vs wall) ' : ' ') },
+                            el('span', { class: 'tag', text: s.source }))),
+                    typeSel, num, sev),
+                el('div', { class: 'row-label' }, el('span', { text: 'Report comment (editable)' }), reset), comment,
+                el('div', { class: 'row-label' }, el('span', { text: 'Recommendations for the report' })), extrasBox, add,
+                el('div', { class: 'row-label' }, el('span', { text: 'Your note' })), note,
+                preview);
+            if (s.source === 'manual') {
+                card.appendChild(el('button', { class: 'del', text: 'Remove this point', onclick: () => { img.spots.splice(idx, 1); panelRefresh(); stats(); } }));
+            }
+            renderExtras(); upd();
+            return card;
         }
 
         function buildPanel(img) {
             const panel = el('div', { class: 'image-panel' });
             const title = el('div', { class: 'image-title' }, el('span', { text: img.image_name }),
                 el('small', { text: 'click the picture to add a point' }));
-            const pic = el('img', { src: '/batch_image/' + encodeURIComponent(BATCH) + '/' + encodeURIComponent(img.image_name), alt: img.image_name, draggable: 'false' });
+            const src = img.picture ? '/download/' + encodeURIComponent(BATCH) + '/' + encodeURIComponent(img.picture)
+                                    : '/batch_image/' + encodeURIComponent(BATCH) + '/' + encodeURIComponent(img.image_name);
+            const pic = el('img', { src: src, alt: img.image_name, draggable: 'false' });
             const wrap = el('div', { class: 'image-wrap' }, pic);
+            let scale = null;
+            if (img.scale) {
+                const bar = el('div', { class: 'bar' }); bar.style.background = img.scale.css;
+                scale = el('div', { class: 'scale' }, el('span', { text: img.scale.lo + '°C' }), bar, el('span', { text: img.scale.hi + '°C' }));
+            }
             const list = el('div', { class: 'spots' });
 
             function refresh() {
                 list.replaceChildren();
-                if (!img.spots.length) list.appendChild(el('div', { class: 'empty', text: 'No points yet - click the picture to add one.' }));
-                img.spots.forEach((s, i) => list.appendChild(spotRow(img, s, i, wrap, refresh)));
+                if (!img.spots.length) list.appendChild(el('div', { class: 'empty', text: 'No points here - click the picture to add one.' }));
+                img.spots.forEach((s, i) => list.appendChild(spotCard(img, s, i, wrap, refresh)));
                 drawMarkers(img, wrap);
             }
 
@@ -164,17 +276,20 @@
                 try {
                     const resp = await fetch('/api/temperature/' + encodeURIComponent(BATCH) + '/' + encodeURIComponent(img.image_name) + '?row=' + row + '&col=' + col);
                     const p = await resp.json(); if (!resp.ok) throw new Error(p.error || 'lookup failed');
-                    img.spots.push({ spot_id: img.image_name + '_manual' + Date.now() + Math.floor(Math.random() * 1000), source: 'manual',
-                                     location: [p.row, p.col], temperature: p.temperature, severity: p.severity, auto_severity: p.severity, excess: p.excess,
-                                     type: TYPES.includes('Window') ? 'Window' : '', spot_number: nextNumber(), note: '' });
-                    refresh(); stats();
+                    const s = { spot_id: img.image_name + '_manual' + Date.now() + Math.floor(Math.random() * 1000), source: 'manual',
+                                location: [p.row, p.col], temperature: p.temperature, severity: p.severity, auto_severity: p.severity, excess: p.excess,
+                                type: TYPES.includes('Window') ? 'Window' : '', spot_number: nextNumber(), note: '', comment: '', comment_custom: false, extras: [], auto_comment: '' };
+                    await refreshAuto(s);
+                    img.spots.push(s); refresh(); stats();
                 } catch (e) { status('Could not read temperature: ' + e.message, 'error'); }
             });
 
-            const noteBox = el('textarea', { placeholder: 'Freehand notes about this whole image (optional)', oninput: e => { img.image_note = e.target.value; } });
+            const noteBox = el('textarea', { placeholder: 'Freehand notes about this whole picture (optional)' });
+            noteBox.addEventListener('input', e => { img.image_note = e.target.value; });
             noteBox.value = img.image_note || '';
-            panel.append(title, wrap, list,
-                el('div', { class: 'image-note' }, el('label', { class: 'field', text: 'Image notes' }), noteBox));
+            panel.append(title, wrap);
+            if (scale) panel.appendChild(scale);
+            panel.append(list, el('div', { class: 'image-note' }, el('label', { class: 'field', text: 'Picture notes' }), noteBox));
             refresh();
             return panel;
         }
@@ -190,7 +305,9 @@
                 property_address: document.getElementById('address').value,
                 inspector_name: document.getElementById('inspector').value,
                 general_notes: document.getElementById('generalNotes').value,
-                images: STATE.images.map(i => ({ image_name: i.image_name, image_note: i.image_note || '', spots: i.spots }))
+                images: STATE.images.map(i => ({ image_name: i.image_name, image_note: i.image_note || '',
+                    // a comment is stored only when the surveyor changed it; otherwise the report regenerates it
+                    spots: i.spots.map(s => ({ ...s, comment: s.comment_custom ? s.comment : '' })) }))
             };
         }
 
@@ -199,8 +316,20 @@
             try {
                 const r = await fetch('/save_labels/' + encodeURIComponent(BATCH), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload()) });
                 const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.error || 'save failed');
-                status('Saved (' + d.labeled_spots + ' of ' + d.total_spots + ' points defined)', 'success'); return true;
+                status('Saved (' + d.labeled_spots + ' of ' + d.total_spots + ' points in the report)', 'success'); return true;
             } catch (e) { status('Error: ' + e.message, 'error'); return false; }
+        }
+
+        async function redetect() {
+            const level = document.getElementById('sens').value;
+            if (!confirm('Choose the automatic points again? This replaces the automatic points on every picture, with anything typed against them. Points you added by clicking, and all notes, are kept.')) return;
+            if (!(await saveAll())) return;
+            status('Re-detecting...', '');
+            try {
+                const r = await fetch('/redetect/' + encodeURIComponent(BATCH), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sensitivity: level }) });
+                const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.error || 'failed');
+                window.location.reload();
+            } catch (e) { status('Error: ' + e.message, 'error'); }
         }
 
         async function generateReport() {
@@ -214,9 +343,14 @@
             } catch (e) { status('Error: ' + e.message, 'error'); }
         }
 
+        STATE.images.forEach(i => i.spots.forEach(s => {
+            s.extras = s.extras || [];
+            s.comment_custom = !!(s.comment && s.comment.trim());
+        }));
         document.getElementById('address').value = STATE.property_address || '';
         document.getElementById('inspector').value = STATE.inspector_name || '';
         document.getElementById('generalNotes').value = STATE.general_notes || '';
+        document.getElementById('sens').value = STATE.sensitivity;
         const grid = document.getElementById('grid');
         STATE.images.forEach(i => grid.appendChild(buildPanel(i)));
         stats();
