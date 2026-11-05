@@ -54,7 +54,7 @@ Each point shows its temperature and **how many degrees warmer than the wall it 
 comment). Priority follows that difference: under 2 degC low, 2+ medium, 4+ high, 8+ very high. Clicking on a
 picture to add a point uses the same scale. `SENSITIVITY` (`lowest` ... `highest`, shown as Fewest ... Most) sets
 how distinct an area must be, and can be changed per survey; on the six sample photos the standard level finds
-1-8 points per image, mostly eaves, rooflines and window/door frames, plus a 16 degC window hot spot.
+1-8 points per image, mostly eaves, rooflines and window/door frames, plus a 16 degC boiler vent hot spot.
 
 ## Storage
 
