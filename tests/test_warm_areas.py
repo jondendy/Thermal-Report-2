@@ -85,8 +85,8 @@ def test_sensitivity_levels_are_ordered():
     t[60:68, 20:36] += 1.1          # subtle
     t[60:68, 80:96] += 1.8          # moderate
     t[60:68, 130:146] += 4.5        # obvious
-    counts = [len(detect_warm_areas(t, s)) for s in ("low", "medium", "high")]
-    assert counts == sorted(counts) and counts[0] == 1 and counts[2] == 3
+    counts = [len(detect_warm_areas(t, s)) for s in ("lowest", "low", "medium", "high", "highest")]
+    assert counts == sorted(counts) and counts[0] == 1 and counts[-1] == 3 and counts[0] < counts[-1]
 
 
 def test_points_are_never_placed_on_the_outer_frame():
@@ -105,7 +105,7 @@ def test_degenerate_inputs_do_not_crash():
 
 
 def test_severity_scale_and_probe_agree():
-    assert [classify_excess(x) for x in (0.5, 2.0, 4.0, 8.0, 20)] == ["low", "medium", "high", "critical", "critical"]
+    assert [classify_excess(x) for x in (0.5, 2.0, 4.0, 8.0, 20)] == ["low", "medium", "high", "very_high", "very_high"]
     t = scene(); t[60:70, 70:82] += 5.0
     excess, sev = severity_at(t, 65, 76)
     assert 4.7 < excess < 5.3 and sev == "high"
@@ -117,4 +117,4 @@ def test_severity_scale_and_probe_agree():
 def test_unknown_sensitivity_falls_back_to_medium():
     t = scene(); t[60:70, 70:82] += 3.0
     assert len(detect_warm_areas(t, "bogus")) == len(detect_warm_areas(t, "medium"))
-    assert set(PRESETS) == {"low", "medium", "high"}
+    assert set(PRESETS) == {"lowest", "low", "medium", "high", "highest"}
