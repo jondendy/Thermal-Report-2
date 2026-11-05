@@ -8,6 +8,7 @@ Layout inside the storage root (identical for local, WebDAV and SMB):
     reports/batches/<batch_id>/hotspot_labels.json          (points + notes)
     reports/batches/<batch_id>/heat_loss_report_data.json
     reports/batches/<batch_id>/<stem>_temperatures.csv
+    reports/batches/<batch_id>/<stem>_thermal.jpg           (picture drawn from the temperatures)
     reports/batches/<batch_id>/<stem>_labeled.jpg
     reports/batches/<batch_id>/<stem>_thermal_report.html
 """
@@ -22,17 +23,21 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from PIL import Image
 from werkzeug.utils import secure_filename
 
 import annotate
+import palette as palette_mod
 from storage import StorageBackend, StorageError, StorageNotFound
+from vocab import SEVERITY_ORDER, normalise_severity
 
 logger = logging.getLogger(__name__)
 
 BATCH_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 ALLOWED_EXT = {".jpg", ".jpeg"}
-SEVERITIES = ["low", "medium", "high", "critical"]
+SEVERITIES = SEVERITY_ORDER
 MAX_NOTE = 5000
+MAX_EXTRAS = 12
 
 
 class BatchError(Exception):
@@ -56,11 +61,18 @@ def _clean_text(value: Any, limit: int = MAX_NOTE) -> str:
 
 class BatchService:
     def __init__(self, storage: StorageBackend, spot_types: List[str],
-                 sensitivity: str = "medium", max_spots: int = 8, processor_factory=None):
+                 sensitivity: str = "medium", max_spots: int = 8, processor_factory=None,
+                 palette: str = palette_mod.DEFAULT, reporter=None):
+        from warm_areas import PRESETS
         self.storage = storage
         self.spot_types = list(spot_types)
-        self.sensitivity = sensitivity
+        self.sensitivity = sensitivity if sensitivity in PRESETS else "medium"
         self.max_spots = max_spots
+        self.palette = palette_mod.valid(palette)
+        if reporter is None:
+            from heat_loss_reporter import HeatLossReporter
+            reporter = HeatLossReporter()
+        self.reporter = reporter
         self._processor_factory = processor_factory
         self._temp_cache: Dict[Tuple[str, str], np.ndarray] = {}
 
@@ -80,13 +92,31 @@ class BatchService:
         return SimpleFLIRProcessor()
 
     # ------------------------------------------------------------------ processing
-    def process_batch(self, batch_id: str, files: List[Tuple[str, bytes]]) -> Dict:
+    def _spots_from(self, temp: np.ndarray, name: str, sensitivity: str):
+        """Automatic points for one image: (HotSpot objects, plain dicts for storage)."""
+        from warm_areas import detect_warm_areas
+        hot_spots = detect_warm_areas(temp, sensitivity, self.max_spots)
+        spots = []
+        for i, hs in enumerate(hot_spots, 1):
+            d = hs.to_dict()
+            spots.append({
+                "spot_id": f"{name}_auto{i}", "source": "auto", "image_name": name,
+                "location": [int(d["location"][0]), int(d["location"][1])],
+                "temperature": round(float(d["temperature"]), 2),
+                "severity": d["severity"], "area_size": int(d["area_size"]),
+                "excess": d["excess"],
+            })
+        return hot_spots, spots
+
+    def process_batch(self, batch_id: str, files: List[Tuple[str, bytes]],
+                      sensitivity: Optional[str] = None) -> Dict:
         """files: [(original_filename, raw_bytes)]. Returns the results dict."""
         from thermal_analyzer import ThermalAnalyzer
-        from warm_areas import detect_warm_areas
+        from warm_areas import PRESETS
 
+        sensitivity = sensitivity if sensitivity in PRESETS else self.sensitivity
         processor = self._make_processor()
-        analyzer = ThermalAnalyzer(sensitivity=self.sensitivity)
+        analyzer = ThermalAnalyzer(sensitivity=sensitivity)
         rdir, idir = self.rdir(batch_id), self.idir(batch_id)
         self.storage.makedirs(rdir)
         self.storage.makedirs(idir)
@@ -114,18 +144,13 @@ class BatchService:
                 self.storage.write_bytes(f"{idir}/{name}", raw)
                 with self.storage.local_copy(f"{idir}/{name}") as local:
                     temp, stats = processor.process_single_image(local, display=False)
-                    hot_spots = detect_warm_areas(temp, self.sensitivity, self.max_spots)
-                    spots = []
-                    for i, hs in enumerate(hot_spots, 1):
-                        d = hs.to_dict()
-                        spots.append({
-                            "spot_id": f"{name}_auto{i}", "source": "auto",
-                            "location": [int(d["location"][0]), int(d["location"][1])],
-                            "temperature": round(float(d["temperature"]), 2),
-                            "severity": d["severity"], "area_size": int(d["area_size"]),
-                            "excess": d["excess"],
-                        })
-                    labeled = annotate.render_labeled_image(local, temp.shape, spots)
+                    hot_spots, spots = self._spots_from(temp, name, sensitivity)
+                    base = None
+                    if self.palette != palette_mod.CAMERA:         # our own colour scale, not the camera's
+                        base = palette_mod.render(temp, self.palette)
+                        self.storage.write_bytes(f"{rdir}/{stem}_thermal.jpg", annotate.to_jpeg_bytes(base))
+                    labeled = annotate.render_labeled_image(base if base is not None else local,
+                                                            temp.shape, spots)
                     self.storage.write_bytes(f"{rdir}/{stem}_labeled.jpg",
                                              annotate.to_jpeg_bytes(labeled))
 
@@ -148,6 +173,7 @@ class BatchService:
                 analysis_images.append({
                     "image_name": name, "shape": list(temp.shape), "stats": clean_stats,
                     "hot_spots": spots, "labeled_image": f"{stem}_labeled.jpg",
+                    "scale": palette_mod.legend(temp, self.palette),
                 })
                 all_stats.append(clean_stats)
             except Exception as exc:                       # one bad image must not sink the batch
@@ -164,7 +190,8 @@ class BatchService:
             }
         self.storage.write_json(f"{rdir}/results.json", results)
         self.storage.write_json(f"{rdir}/thermal_analysis.json", {
-            "batch_id": batch_id, "timestamp": results["timestamp"], "images": analysis_images})
+            "batch_id": batch_id, "timestamp": results["timestamp"], "sensitivity": sensitivity,
+            "images": analysis_images})
         return results
 
     # ------------------------------------------------------------------ reading
@@ -216,6 +243,46 @@ class BatchService:
         return {"row": r, "col": c, "temperature": round(float(arr[r, c]), 2),
                 "excess": excess, "severity": severity}
 
+    # ------------------------------------------------------------------ pictures
+    def ensure_base(self, batch_id: str, image_name: str) -> Optional[str]:
+        """File name (inside the reports folder) of the thermal picture drawn from the
+        temperatures, creating it for batches processed before it existed. None when the
+        camera's own picture is used instead (PALETTE=camera)."""
+        if self.palette == palette_mod.CAMERA:
+            return None
+        stem = os.path.splitext(secure_filename(image_name))[0]
+        fname = f"{stem}_thermal.jpg"
+        path = f"{self.rdir(batch_id)}/{fname}"
+        if not self.storage.exists(path):
+            picture = palette_mod.render(self.temperatures(batch_id, image_name), self.palette)
+            self.storage.write_bytes(path, annotate.to_jpeg_bytes(picture))
+        return fname
+
+    def image_scale(self, batch_id: str, entry: Dict) -> Optional[Dict]:
+        """Scale-bar description for one image (computed once for older batches)."""
+        if self.palette == palette_mod.CAMERA:
+            return None
+        scale = entry.get("scale")
+        if scale and scale.get("palette") == self.palette:
+            return scale
+        return palette_mod.legend(self.temperatures(batch_id, entry["image_name"]), self.palette)
+
+    def report_images(self, batch_id: str) -> List[Dict]:
+        """Images in survey order with their scale, for the report builder."""
+        return [{"image_name": e["image_name"], "scale": self.image_scale(batch_id, e)}
+                for e in self.get_analysis(batch_id).get("images", [])]
+
+    def _draw_labeled(self, batch_id: str, entry: Dict, spots: List[Dict]) -> bytes:
+        name, shape = entry["image_name"], tuple(entry["shape"])
+        base = self.ensure_base(batch_id, name)
+        if base:
+            data = self.storage.read_bytes(f"{self.rdir(batch_id)}/{base}")
+            picture = annotate.render_labeled_image(Image.open(io.BytesIO(data)), shape, spots)
+        else:
+            with self.storage.local_copy(f"{self.idir(batch_id)}/{name}") as local:
+                picture = annotate.render_labeled_image(local, shape, spots)
+        return annotate.to_jpeg_bytes(picture)
+
     # ------------------------------------------------------------------ labels & notes
     def get_labels(self, batch_id: str) -> Dict:
         try:
@@ -242,17 +309,26 @@ class BatchService:
                 if m is None:                                   # never saved: propose a default label
                     m = {"type": default_type, "spot_number": next_number}
                     next_number += 1
-                spots.append({**s, "auto_severity": s["severity"],
-                              "severity": m.get("severity", s["severity"]),
+                spots.append({**s, "auto_severity": normalise_severity(s["severity"]),
+                              "severity": normalise_severity(m.get("severity", s["severity"])),
                               "type": m.get("type", ""), "spot_number": m.get("spot_number"),
-                              "note": m.get("note", "")})
+                              "note": m.get("note", ""), "comment": m.get("comment", ""),
+                              "extras": list(m.get("extras", []))})
             for m in labels.get("spots", []):
                 if m.get("source") == "manual" and m.get("image_name") == name:
-                    spots.append({**m, "auto_severity": m.get("auto_severity", m.get("severity", "low"))})
+                    spots.append({**m, "severity": normalise_severity(m.get("severity")),
+                                  "auto_severity": normalise_severity(m.get("auto_severity", m.get("severity"))),
+                                  "comment": m.get("comment", ""), "extras": list(m.get("extras", []))})
+            for sp in spots:                    # what the report would say if the comment is left alone
+                sp["auto_comment"] = self.reporter.auto_comment(sp.get("type"), sp.get("temperature"),
+                                                                sp.get("excess"), sp["severity"])
+            picture = self.ensure_base(batch_id, name)
             images.append({"image_name": name, "shape": img["shape"], "stats": img.get("stats", {}),
                            "image_note": (labels.get("image_notes") or {}).get(name, ""),
+                           "picture": picture, "scale": self.image_scale(batch_id, img),
                            "spots": spots})
         return {"batch_id": batch_id, "images": images,
+                "sensitivity": analysis.get("sensitivity", self.sensitivity),
                 "general_notes": labels.get("general_notes", ""),
                 "property_address": labels.get("property_address", ""),
                 "inspector_name": labels.get("inspector_name", "")}
@@ -304,19 +380,19 @@ class BatchService:
             if not base:
                 return None
             location, temp, area = base["location"], base["temperature"], base.get("area_size", 0)
-            auto_sev, excess = base["severity"], base.get("excess")
+            auto_sev, excess = normalise_severity(base["severity"]), base.get("excess")
         else:
             try:
                 row, col = int(s["location"][0]), int(s["location"][1])
             except (KeyError, TypeError, ValueError, IndexError):
                 return None
             p = self.probe(batch_id, image_name, row, col)      # temperature comes from the data
-            location, temp, area, auto_sev = [p["row"], p["col"]], p["temperature"], 0, p["severity"]
+            location, temp, area, auto_sev = [p["row"], p["col"]], p["temperature"], 0, normalise_severity(p["severity"])
             excess = p["excess"]
             if not spot_id:
                 spot_id = f"{image_name}_manual{int(datetime.now().timestamp() * 1000)}"
 
-        sev = s.get("severity") if s.get("severity") in SEVERITIES else auto_sev
+        sev = normalise_severity(s.get("severity"), auto_sev)
         stype = s.get("type") if s.get("type") in self.spot_types else ""
         try:
             number = int(s.get("spot_number"))
@@ -326,7 +402,10 @@ class BatchService:
         return {"spot_id": spot_id, "image_name": image_name, "source": source,
                 "location": [int(location[0]), int(location[1])], "temperature": float(temp),
                 "area_size": int(area), "excess": excess, "auto_severity": auto_sev, "severity": sev,
-                "type": stype, "spot_number": number, "note": _clean_text(s.get("note"), 2000)}
+                "type": stype, "spot_number": number, "note": _clean_text(s.get("note"), 2000),
+                "comment": _clean_text(s.get("comment"), 2000),
+                "extras": [_clean_text(e, 600).strip() for e in (s.get("extras") or [])
+                           if isinstance(e, str) and e.strip()][:MAX_EXTRAS]}
 
     def regenerate_labeled_images(self, batch_id: str, labels: Dict, analysis: Dict) -> None:
         """Redraw each *_labeled.jpg with every point (auto + manual) and its type/number."""
@@ -338,9 +417,38 @@ class BatchService:
             name = img["image_name"]
             spots = by_image.get(name, img.get("hot_spots", []))
             stem = os.path.splitext(name)[0]
-            with self.storage.local_copy(f"{idir}/{name}") as local:
-                picture = annotate.render_labeled_image(local, tuple(img["shape"]), spots)
-            self.storage.write_bytes(f"{rdir}/{stem}_labeled.jpg", annotate.to_jpeg_bytes(picture))
+            self.storage.write_bytes(f"{rdir}/{stem}_labeled.jpg", self._draw_labeled(batch_id, img, spots))
+
+    def redetect(self, batch_id: str, sensitivity: str) -> Dict:
+        """Choose automatic points again at another sensitivity (fewer or more points).
+
+        Points you added by clicking, and all notes, are kept. The old automatic points and
+        anything typed against them are replaced by the new ones."""
+        from warm_areas import PRESETS
+        if sensitivity not in PRESETS:
+            raise BatchError("Unknown sensitivity")
+        analysis, results = self.get_analysis(batch_id), self.get_results(batch_id)
+        by_name = {i.get("image_name"): i for i in results.get("images", [])}
+        total = 0
+        for img in analysis.get("images", []):
+            name = img["image_name"]
+            _, spots = self._spots_from(self.temperatures(batch_id, name), name, sensitivity)
+            img["hot_spots"] = spots
+            total += len(spots)
+            if name in by_name:
+                by_name[name]["hot_spots"], by_name[name]["hot_spot_count"] = spots, len(spots)
+        analysis["sensitivity"] = sensitivity
+        self.storage.write_json(f"{self.rdir(batch_id)}/thermal_analysis.json", analysis)
+        self.storage.write_json(f"{self.rdir(batch_id)}/results.json", results)
+
+        labels = self.get_labels(batch_id)
+        labels["spots"] = [s for s in labels.get("spots", []) if s.get("source") == "manual"]
+        if self.storage.exists(f"{self.rdir(batch_id)}/hotspot_labels.json"):
+            self.storage.write_json(f"{self.rdir(batch_id)}/hotspot_labels.json", labels)
+        draw = dict(labels)
+        draw["spots"] = labels["spots"] + [s for i in analysis["images"] for s in i["hot_spots"]]
+        self.regenerate_labeled_images(batch_id, draw, analysis)
+        return {"points": total, "sensitivity": sensitivity}
 
     # ------------------------------------------------------------------ report data
     def save_report(self, batch_id: str, report: Dict) -> None:
