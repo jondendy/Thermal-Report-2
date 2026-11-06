@@ -54,7 +54,7 @@ Each point shows its temperature and **how many degrees warmer than the wall it 
 comment). Priority follows that difference: under 2 degC low, 2+ medium, 4+ high, 8+ very high. Clicking on a
 picture to add a point uses the same scale. `SENSITIVITY` (`lowest` ... `highest`, shown as Fewest ... Most) sets
 how distinct an area must be, and can be changed per survey; on the six sample photos the standard level finds
-1-8 points per image, mostly eaves, rooflines and window/door frames, plus a 16 degC boiler vent hot spot.
+1-8 points per image, mostly eaves, rooflines and window/door frames, plus a 16 degC window hot spot.
 
 ## Storage
 
@@ -68,6 +68,14 @@ Set `STORAGE_BACKEND` (see `env.example`):
 
 All code reads/writes through `storage.StorageBackend`, so adding another backend (S3, SFTP, ...) means one new
 class implementing seven small methods.
+
+## Waking a sleeping NAS (optional)
+
+If the survey data or images live on a Synology that sleeps, set `WAKE_MAC`, `NAS_HOST` (and
+optionally `WAKE_BROADCAST`, `NAS_PORT`, `NAS_MARKER`) - see `env.example`. `POST /wake_storage` then sends a
+Wake-on-LAN packet (at most one every 30 seconds, and none if the NAS is already up) and
+`GET /storage_status` reports whether it is awake. Unset, both do nothing. Nothing in the upload or survey
+flow calls them yet; they are ready for the planned image inbox.
 
 ## Tests
 

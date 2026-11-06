@@ -29,6 +29,11 @@ class Settings:
     org_name: str = ""
     palette: str = "inferno"             # inferno | cividis | grey | camera
     report_content_file: str = ""        # optional replacement for report_content.json
+    wake_mac: str = ""                   # Wake-on-LAN for a sleeping NAS; off until MAC and host are set
+    wake_broadcast: str = ""             # e.g. 192.168.1.255 (blank = 255.255.255.255)
+    nas_host: str = ""                   # NAS name or IP, probed to see whether it is awake
+    nas_port: int = 445                  # 445 = SMB file sharing
+    nas_marker: str = ""                 # optional file that must exist on the share, e.g. .thermal-report-share
 
 
 def load_settings(env=None) -> Settings:
@@ -51,4 +56,9 @@ def load_settings(env=None) -> Settings:
         org_name=env.get("ORG_NAME", ""),
         palette=palette,
         report_content_file=env.get("REPORT_CONTENT_FILE", ""),
+        wake_mac=env.get("WAKE_MAC", "").strip(),
+        wake_broadcast=env.get("WAKE_BROADCAST", "").strip(),
+        nas_host=env.get("NAS_HOST", "").strip(),
+        nas_port=_int(env, "NAS_PORT", 445),
+        nas_marker=env.get("NAS_MARKER", "").strip(),
     )

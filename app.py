@@ -23,6 +23,7 @@ import io
 from heat_loss_reporter import HeatLossReporter
 from services import BatchError, BatchService, new_batch_id, valid_batch_id
 from settings import load_settings
+from wake import Waker
 from vocab import (SENSITIVITY_LABELS, SENSITIVITY_ORDER, SPOT_ABBR, severity_legend)
 from storage import StorageBackend, StorageError, StorageNotFound, create_storage
 
@@ -96,9 +97,22 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def help_page():
         return redirect(url_for("info"))
 
+    waker = Waker(settings.wake_mac, settings.nas_host, settings.nas_port, settings.wake_broadcast,
+                  settings.nas_marker)
+    app.extensions["waker"] = waker
+
     @app.route("/healthz")
     def healthz():
         return jsonify({"status": "ok", "storage": storage.describe()})
+
+    @app.route("/storage_status")
+    def storage_status():
+        """Is the NAS awake? (Always up/unconfigured unless WAKE_MAC and NAS_HOST are set.)"""
+        return jsonify(waker.status())
+
+    @app.route("/wake_storage", methods=["POST"])
+    def wake_storage():
+        return jsonify(waker.wake())
 
     # ---------------------------------------------------------------- upload / batches
     @app.route("/upload", methods=["POST"])
