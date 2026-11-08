@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Thermal Report web application (merged build).
 
+With ORGS_FILE set, several groups share one installation: each person signs in through
+Cloudflare Access, the app checks the signed token, and shows only the groups they belong to
+(see orgs.py, auth.py). Without it, there is one group and no sign-in check.
+
 Flow: upload FLIR images -> hot spots detected -> surveyor defines points (type + number),
 adds extra points by clicking, and writes freehand notes -> heat loss report is generated
 with both the auto-generated comments and the surveyor's notes.
@@ -10,31 +14,55 @@ All files go through the storage backend chosen with STORAGE_BACKEND
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Optional
 
-from flask import (Flask, abort, jsonify, redirect, render_template, request,
-                   send_file, url_for, Response)
+from flask import (Flask, abort, g, jsonify, redirect, render_template, request,
+                   send_file, session, url_for, Response)
+from werkzeug.local import LocalProxy
 from werkzeug.utils import secure_filename
 import io
+
+from audit import AuditLog
+from auth import build_identity
+from inbox import Inbox, InboxError
+from orgs import Org, OrgDirectory
 
 from heat_loss_reporter import HeatLossReporter
 from services import BatchError, BatchService, new_batch_id, valid_batch_id
 from settings import load_settings
 from wake import Waker
 from vocab import (SENSITIVITY_LABELS, SENSITIVITY_ORDER, SPOT_ABBR, severity_legend)
-from storage import StorageBackend, StorageError, StorageNotFound, create_storage
+from storage import (PrefixedStorage, StorageBackend, StorageError, StorageNotFound,
+                     create_storage)
 
 logger = logging.getLogger("thermal_report")
 
+PUBLIC_ENDPOINTS = {"healthz", "static"}
 REPORT_FILE_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".csv": "text/csv",
                      ".html": "text/html"}
 
 
+@dataclass
+class Context:
+    """Everything that belongs to one group (or to the single group of a one-group install)."""
+    slug: str
+    org_name: str
+    storage: StorageBackend
+    service: BatchService
+    reporter: HeatLossReporter
+    sensitivity: str
+    audit: Optional[AuditLog] = None
+    inbox: Optional[Inbox] = None
+
+
 def create_app(storage: Optional[StorageBackend] = None, settings=None,
-               processor_factory=None) -> Flask:
+               processor_factory=None, identity=None) -> Flask:
+    """``identity`` (request -> email or None) replaces the AUTH_MODE check; used by tests."""
     settings = settings or load_settings()
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -43,14 +71,95 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     app.config["MAX_CONTENT_LENGTH"] = settings.max_upload_mb * 1024 * 1024
     app.config["SECRET_KEY"] = settings.secret_key
 
-    storage = storage or create_storage()
-    reporter = HeatLossReporter(content_file=settings.report_content_file or None)
-    service = BatchService(storage, reporter.spot_types, sensitivity=settings.sensitivity,
-                           max_spots=settings.max_spots, processor_factory=processor_factory,
-                           palette=settings.palette, reporter=reporter)
+    base_storage = storage or create_storage()
     sensitivity_choices = [{"key": k, "label": SENSITIVITY_LABELS[k]} for k in SENSITIVITY_ORDER]
-    app.extensions["storage"], app.extensions["service"] = storage, service
-    logger.info("Storage backend: %s", storage.describe())
+    directory = OrgDirectory.load(settings.orgs_file) if settings.orgs_file else None
+    if directory:
+        if identity is None:
+            identity = build_identity(settings.auth_mode, settings.cf_team_domain, settings.cf_aud,
+                                      settings.dev_user_email)
+        if settings.auth_mode != "dev" and settings.secret_key in ("", "change-me"):
+            raise ValueError("Set a long random SECRET_KEY in .env before using several groups")
+        app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                          SESSION_COOKIE_SECURE=(settings.auth_mode == "cloudflare"))
+
+    waker = Waker(settings.wake_mac, settings.nas_host, settings.nas_port, settings.wake_broadcast,
+                  settings.nas_marker)
+    app.extensions["waker"] = waker
+    contexts = {}
+
+    def build_context(org: Optional[Org]) -> Context:
+        content = (org.content_file if org else None) or settings.report_content_file or None
+        rep = HeatLossReporter(content_file=content)
+        st = PrefixedStorage(base_storage, org.slug) if org else base_storage
+        sens = (org.sensitivity if org else None) or settings.sensitivity
+        pal = (org.palette if org else None) or settings.palette
+        svc = BatchService(st, rep.spot_types, sensitivity=sens, max_spots=settings.max_spots,
+                           processor_factory=processor_factory, palette=pal, reporter=rep)
+        box = (Inbox(settings.inbox_root, org.slug if org else "default", marker=settings.nas_marker,
+                     waker=waker, max_files=settings.inbox_max_files) if settings.inbox_root else None)
+        return Context(slug=org.slug if org else "", org_name=org.name if org else settings.org_name,
+                       storage=st, service=svc, reporter=rep, sensitivity=svc.sensitivity,
+                       audit=AuditLog(st, org.slug) if org else None, inbox=box)
+
+    def context_for(slug: str) -> Context:
+        if slug not in contexts:
+            contexts[slug] = build_context(directory.orgs[slug])
+        return contexts[slug]
+
+    app.extensions["storage"] = base_storage
+    app.extensions["context_for"] = context_for
+    if directory is None:
+        single = build_context(None)
+        app.extensions["service"] = single.service
+    service = LocalProxy(lambda: g.ctx.service)
+    reporter = LocalProxy(lambda: g.ctx.reporter)
+    storage = LocalProxy(lambda: g.ctx.storage)
+    logger.info("Storage backend: %s%s", base_storage.describe(),
+                f" ({len(directory.orgs)} groups)" if directory else "")
+
+    # ---------------------------------------------------------------- who is this, and for which group?
+    @app.before_request
+    def resolve_context():
+        g.ctx, g.user, g.orgs = None, "", []
+        if directory is None:
+            g.ctx = single
+            return
+        if request.endpoint in PUBLIC_ENDPOINTS:
+            return
+        email = identity(request)
+        if not email:
+            return Response("Sign-in required. Please open this site through its normal address.", 401)
+        g.user, g.orgs = email, directory.for_user(email)
+        if not g.orgs:
+            logger.warning("Refused %s: not a member of any group", email)
+            return render_template("no_access.html", email=email), 403
+        slugs = [o.slug for o in g.orgs]
+        chosen = session.get("org")
+        if chosen not in slugs:
+            session.pop("org", None)
+            chosen = slugs[0] if len(slugs) == 1 else None
+        if chosen is None:                                  # a member of several groups must choose
+            if request.endpoint in ("choose_group", "switch_group"):
+                return
+            return redirect(url_for("choose_group"))
+        g.ctx = context_for(chosen)
+
+    @app.context_processor
+    def banner():
+        ctx = getattr(g, "ctx", None)
+        if directory is None or ctx is None:
+            return {"org_banner": None}
+        org = directory.orgs[ctx.slug]
+        return {"org_banner": {"name": org.name, "colour": org.colour, "text": org.text_colour,
+                               "user": g.user, "current": ctx.slug,
+                               "orgs": [{"slug": o.slug, "name": o.name} for o in g.orgs] if len(g.orgs) > 1 else [],
+                               "is_admin": directory.is_admin(g.user)}}
+
+    def audit(action: str, batch_id: Optional[str] = None, **detail):
+        if g.ctx is not None and g.ctx.audit is not None:
+            g.ctx.audit.record(g.user, action, batch_id,
+                               ip=request.headers.get("Cf-Connecting-Ip") or request.remote_addr or "", **detail)
 
     # ---------------------------------------------------------------- helpers
     def batch_or_404(batch_id: str) -> str:
@@ -87,7 +196,33 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def index():
         return render_template("index.html", batches=service.list_batches(),
                                batch_size=settings.batch_size, sensitivities=sensitivity_choices,
-                               default_sensitivity=settings.sensitivity)
+                               default_sensitivity=g.ctx.sensitivity, drive_enabled=g.ctx.inbox is not None)
+
+    @app.route("/choose_group")
+    def choose_group():
+        if directory is None:
+            return redirect(url_for("index"))
+        return render_template("choose_group.html", orgs=g.orgs, user=g.user,
+                               current=session.get("org"))
+
+    @app.route("/switch_group", methods=["POST"])
+    def switch_group():
+        if directory is None:
+            return redirect(url_for("index"))
+        slug = request.form.get("org", "")
+        if slug not in [o.slug for o in g.orgs]:
+            abort(403)
+        session["org"] = slug
+        ctx = context_for(slug)
+        ctx.audit.record(g.user, "switch_group", ip=request.headers.get("Cf-Connecting-Ip") or request.remote_addr or "")
+        return redirect(url_for("index"))
+
+    @app.route("/activity")
+    def activity():
+        """Who did what for this group. Admins only."""
+        if directory is None or not directory.is_admin(g.user):
+            abort(403)
+        return render_template("activity.html", events=g.ctx.audit.recent(300), org_name=g.ctx.org_name)
 
     @app.route("/info")
     def info():
@@ -97,13 +232,11 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def help_page():
         return redirect(url_for("info"))
 
-    waker = Waker(settings.wake_mac, settings.nas_host, settings.nas_port, settings.wake_broadcast,
-                  settings.nas_marker)
-    app.extensions["waker"] = waker
-
     @app.route("/healthz")
     def healthz():
-        return jsonify({"status": "ok", "storage": storage.describe()})
+        if directory is not None:                      # reachable without sign-in, so say as little as possible
+            return jsonify({"status": "ok"})
+        return jsonify({"status": "ok", "storage": g.ctx.storage.describe()})
 
     @app.route("/storage_status")
     def storage_status():
@@ -117,22 +250,117 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     # ---------------------------------------------------------------- upload / batches
     @app.route("/upload", methods=["POST"])
     def upload_files():
+        drive_names = [n for n in request.form.getlist("drive_files") if n]
         files = [f for f in request.files.getlist("files[]") if f and f.filename]
-        valid = [f for f in files
-                 if os.path.splitext(secure_filename(f.filename))[1].lower() in (".jpg", ".jpeg")]
-        if not valid:
-            return jsonify({"error": "No valid FLIR images provided"}), 400
-        if len(valid) > settings.batch_size:
-            return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
+        if drive_names and files:
+            return jsonify({"error": "Choose pictures from your computer or from the drive, not both"}), 400
+        if drive_names:                                  # pictures already parked on the drive
+            box = g.ctx.inbox
+            if box is None or not box.available():
+                return jsonify({"error": "The drive is not available right now"}), 503
+            if len(drive_names) > settings.batch_size:
+                return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
+            try:
+                payload = [(n, box.read(n)) for n in drive_names]
+            except InboxError as exc:
+                return jsonify({"error": str(exc)}), 400
+            source = "drive"
+        else:
+            valid = [f for f in files
+                     if os.path.splitext(secure_filename(f.filename))[1].lower() in (".jpg", ".jpeg")]
+            if not valid:
+                return jsonify({"error": "No valid FLIR images provided"}), 400
+            if len(valid) > settings.batch_size:
+                return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
+            payload, source = [(f.filename, f.read()) for f in valid], "computer"
 
-        batch_id = new_batch_id([f.filename for f in valid])
-        results = service.process_batch(batch_id, [(f.filename, f.read()) for f in valid],
-                                        sensitivity=request.form.get("sensitivity"))
+        batch_id = new_batch_id([n for n, _ in payload])
+        results = service.process_batch(batch_id, payload, sensitivity=request.form.get("sensitivity"))
         if not results.get("summary", {}).get("total_images"):
             service.delete_batch(batch_id)
             errors = "; ".join(i.get("error", "") for i in results["images"] if i.get("error"))
             return jsonify({"error": f"No image could be processed. {errors}".strip()}), 422
+        if source == "drive" and settings.inbox_delete_after:
+            for n, _ in payload:                          # the batch holds its own copy now
+                try:
+                    g.ctx.inbox.delete(n)
+                except (InboxError, OSError):
+                    pass
+        audit("upload", batch_id, images=results["summary"]["total_images"], source=source)
         return jsonify({"success": True, "batch_id": batch_id, "results": results}), 201
+
+    # ---------------------------------------------------------------- the drive (staging folder)
+    def drive_or_error():
+        """The group's drive folder, or (None, error response) when off or not reachable."""
+        box = g.ctx.inbox
+        if box is None:
+            return None, (jsonify({"error": "No drive is set up"}), 404)
+        if not box.available():
+            return None, (jsonify({"error": "The drive is not available right now", "asleep": True}), 503)
+        return box, None
+
+    @app.route("/drive/status")
+    def drive_status():
+        box = g.ctx.inbox
+        if box is None:
+            return jsonify({"enabled": False, "available": False, "wake_configured": False})
+        return jsonify({"enabled": True, "available": box.available(), "wake_configured": waker.configured})
+
+    @app.route("/drive/list")
+    def drive_list():
+        box, err = drive_or_error()
+        return err if err else jsonify({"files": box.list()})
+
+    @app.route("/drive/thumb/<name>")
+    def drive_thumb(name):
+        box, err = drive_or_error()
+        if err:
+            return err
+        try:
+            data = box.thumb(name)
+        except (InboxError, OSError):
+            abort(404)
+        resp = Response(data, mimetype="image/jpeg")
+        resp.headers["Cache-Control"] = "private, max-age=3600"
+        return resp
+
+    @app.route("/drive/upload", methods=["POST"])
+    def drive_upload():
+        box, err = drive_or_error()
+        if err:
+            return err
+        files = [f for f in request.files.getlist("files[]") if f and f.filename]
+        try:
+            stamps = json.loads(request.form.get("modified", "[]"))
+        except ValueError:
+            stamps = []
+        saved, rejected = [], []
+        for i, f in enumerate(files):
+            try:
+                ms = stamps[i] if i < len(stamps) else None
+                saved.append(box.save(f.filename, f.read(), float(ms) / 1000.0 if ms else None))
+            except (InboxError, ValueError, TypeError, OSError) as exc:
+                rejected.append({"name": f.filename, "reason": str(exc)})
+        if saved:
+            audit("drive_upload", files=len(saved))
+        return jsonify({"saved": saved, "rejected": rejected}), (201 if saved else 400)
+
+    @app.route("/drive/delete", methods=["POST"])
+    def drive_delete():
+        box, err = drive_or_error()
+        if err:
+            return err
+        names = (request.get_json(silent=True) or {}).get("names") or []
+        removed = []
+        for n in names:
+            try:
+                if box.delete(n):
+                    removed.append(n)
+            except (InboxError, OSError):
+                continue
+        if removed:
+            audit("drive_delete", files=len(removed))
+        return jsonify({"deleted": removed})
 
     @app.route("/report/<batch_id>")
     def view_report(batch_id):
@@ -152,6 +380,7 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def delete_batch(batch_id):
         batch_or_404(batch_id)
         service.delete_batch(batch_id)
+        audit("delete_batch", batch_id)
         return jsonify({"success": True})
 
     # ---------------------------------------------------------------- files
@@ -204,12 +433,15 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def redetect(batch_id):
         batch_or_404(batch_id)
         body = request.get_json(silent=True) or {}
-        return jsonify({"success": True, **service.redetect(batch_id, str(body.get("sensitivity", "")))})
+        out = service.redetect(batch_id, str(body.get("sensitivity", "")))
+        audit("redetect", batch_id, sensitivity=out["sensitivity"], points=out["points"])
+        return jsonify({"success": True, **out})
 
     @app.route("/save_labels/<batch_id>", methods=["POST"])
     def save_labels(batch_id):
         batch_or_404(batch_id)
         summary = service.save_labels(batch_id, request.get_json(silent=True))
+        audit("save_labels", batch_id, points=summary.get("labeled_spots"))
         return jsonify({"success": True, "message": "Saved", **summary})
 
     # ---------------------------------------------------------------- report
@@ -224,8 +456,10 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
             batch_id, labels,
             property_address=(body.get("property_address") or "").strip(),
             inspector_name=(body.get("inspector_name") or "").strip(),
-            images_meta=service.report_images(batch_id), org_name=settings.org_name)
+            images_meta=service.report_images(batch_id), org_name=g.ctx.org_name)
+        report["generated_by"], report["group"] = g.user, g.ctx.slug
         service.save_report(batch_id, report)
+        audit("generate_report", batch_id, property=report["property_address"])
         return jsonify({"success": True, "message": "Heat loss report generated successfully",
                         "report_url": url_for("view_heat_loss_report", batch_id=batch_id)})
 
