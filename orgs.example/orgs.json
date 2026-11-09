@@ -1,0 +1,17 @@
+{
+  "admins": ["you@example.org"],
+  "organisations": {
+    "chesham": {
+      "name": "Sustainable Chesham Energy Group",
+      "colour": "#1f3a5f",
+      "sensitivity": "medium",
+      "palette": "inferno",
+      "members": ["alice@example.org", "bob@example.org", "shared.operator@example.org"]
+    },
+    "amersham": {
+      "name": "Amersham Energy Group",
+      "colour": "#6b2c5f",
+      "members": ["carol@example.org", "shared.operator@example.org"]
+    }
+  }
+}
