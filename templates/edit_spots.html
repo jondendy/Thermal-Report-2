@@ -60,7 +60,7 @@
         @media (max-width: 640px) { .grid-container { grid-template-columns: 1fr; } .spot-head { grid-template-columns: 1fr 1fr; } .meta { grid-template-columns: 1fr; } }
     </style>
 </head>
-<body>
+<body>{% include "_banner.html" %}
     <div class="card">
         <h1>Define Heat Points &amp; Edit the Report Text</h1>
         <p><a href="/">&larr; Home</a> &nbsp;|&nbsp; <strong>Batch:</strong> {{ batch_id }}</p>
