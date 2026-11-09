@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Choose a group</title>
+<style>
+    body { font-family: Arial, sans-serif; background: #f2f4f7; color: #2b2f36; display: flex; justify-content: center; padding: 60px 16px; }
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.12); padding: 28px 30px; max-width: 460px; width: 100%; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    p { color: #5d6570; font-size: 14px; line-height: 1.45; }
+    select, button { width: 100%; padding: 11px; font-size: 16px; margin-top: 14px; border-radius: 4px; }
+    select { border: 1px solid #c3c9d1; }
+    button { background: #1f3a5f; color: #fff; border: none; cursor: pointer; }
+</style></head>
+<body>
+<div class="card">
+    <h1>Who is this survey for?</h1>
+    <p>Signed in as <strong>{{ user }}</strong>. You can work for more than one group. Pictures, reports and
+       customer details are kept separately for each group, and the report carries that group's name.</p>
+    <form method="post" action="/switch_group">
+        <select name="org" aria-label="Group">
+            {% for o in orgs %}<option value="{{ o.slug }}"{% if o.slug == current %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+        </select>
+        <button type="submit">Continue</button>
+    </form>
+</div>
+</body></html>

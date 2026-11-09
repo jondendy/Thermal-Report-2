@@ -14,6 +14,7 @@ All files go through the storage backend chosen with STORAGE_BACKEND
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ import io
 
 from audit import AuditLog
 from auth import build_identity
+from inbox import Inbox, InboxError
 from orgs import Org, OrgDirectory
 
 from heat_loss_reporter import HeatLossReporter
@@ -55,6 +57,7 @@ class Context:
     reporter: HeatLossReporter
     sensitivity: str
     audit: Optional[AuditLog] = None
+    inbox: Optional[Inbox] = None
 
 
 def create_app(storage: Optional[StorageBackend] = None, settings=None,
@@ -80,6 +83,9 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                           SESSION_COOKIE_SECURE=(settings.auth_mode == "cloudflare"))
 
+    waker = Waker(settings.wake_mac, settings.nas_host, settings.nas_port, settings.wake_broadcast,
+                  settings.nas_marker)
+    app.extensions["waker"] = waker
     contexts = {}
 
     def build_context(org: Optional[Org]) -> Context:
@@ -90,9 +96,11 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         pal = (org.palette if org else None) or settings.palette
         svc = BatchService(st, rep.spot_types, sensitivity=sens, max_spots=settings.max_spots,
                            processor_factory=processor_factory, palette=pal, reporter=rep)
+        box = (Inbox(settings.inbox_root, org.slug if org else "default", marker=settings.nas_marker,
+                     waker=waker, max_files=settings.inbox_max_files) if settings.inbox_root else None)
         return Context(slug=org.slug if org else "", org_name=org.name if org else settings.org_name,
                        storage=st, service=svc, reporter=rep, sensitivity=svc.sensitivity,
-                       audit=AuditLog(st, org.slug) if org else None)
+                       audit=AuditLog(st, org.slug) if org else None, inbox=box)
 
     def context_for(slug: str) -> Context:
         if slug not in contexts:
@@ -188,7 +196,7 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def index():
         return render_template("index.html", batches=service.list_batches(),
                                batch_size=settings.batch_size, sensitivities=sensitivity_choices,
-                               default_sensitivity=g.ctx.sensitivity)
+                               default_sensitivity=g.ctx.sensitivity, drive_enabled=g.ctx.inbox is not None)
 
     @app.route("/choose_group")
     def choose_group():
@@ -224,10 +232,6 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def help_page():
         return redirect(url_for("info"))
 
-    waker = Waker(settings.wake_mac, settings.nas_host, settings.nas_port, settings.wake_broadcast,
-                  settings.nas_marker)
-    app.extensions["waker"] = waker
-
     @app.route("/healthz")
     def healthz():
         if directory is not None:                      # reachable without sign-in, so say as little as possible
@@ -246,23 +250,117 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     # ---------------------------------------------------------------- upload / batches
     @app.route("/upload", methods=["POST"])
     def upload_files():
+        drive_names = [n for n in request.form.getlist("drive_files") if n]
         files = [f for f in request.files.getlist("files[]") if f and f.filename]
-        valid = [f for f in files
-                 if os.path.splitext(secure_filename(f.filename))[1].lower() in (".jpg", ".jpeg")]
-        if not valid:
-            return jsonify({"error": "No valid FLIR images provided"}), 400
-        if len(valid) > settings.batch_size:
-            return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
+        if drive_names and files:
+            return jsonify({"error": "Choose pictures from your computer or from the drive, not both"}), 400
+        if drive_names:                                  # pictures already parked on the drive
+            box = g.ctx.inbox
+            if box is None or not box.available():
+                return jsonify({"error": "The drive is not available right now"}), 503
+            if len(drive_names) > settings.batch_size:
+                return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
+            try:
+                payload = [(n, box.read(n)) for n in drive_names]
+            except InboxError as exc:
+                return jsonify({"error": str(exc)}), 400
+            source = "drive"
+        else:
+            valid = [f for f in files
+                     if os.path.splitext(secure_filename(f.filename))[1].lower() in (".jpg", ".jpeg")]
+            if not valid:
+                return jsonify({"error": "No valid FLIR images provided"}), 400
+            if len(valid) > settings.batch_size:
+                return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
+            payload, source = [(f.filename, f.read()) for f in valid], "computer"
 
-        batch_id = new_batch_id([f.filename for f in valid])
-        results = service.process_batch(batch_id, [(f.filename, f.read()) for f in valid],
-                                        sensitivity=request.form.get("sensitivity"))
+        batch_id = new_batch_id([n for n, _ in payload])
+        results = service.process_batch(batch_id, payload, sensitivity=request.form.get("sensitivity"))
         if not results.get("summary", {}).get("total_images"):
             service.delete_batch(batch_id)
             errors = "; ".join(i.get("error", "") for i in results["images"] if i.get("error"))
             return jsonify({"error": f"No image could be processed. {errors}".strip()}), 422
-        audit("upload", batch_id, images=results["summary"]["total_images"])
+        if source == "drive" and settings.inbox_delete_after:
+            for n, _ in payload:                          # the batch holds its own copy now
+                try:
+                    g.ctx.inbox.delete(n)
+                except (InboxError, OSError):
+                    pass
+        audit("upload", batch_id, images=results["summary"]["total_images"], source=source)
         return jsonify({"success": True, "batch_id": batch_id, "results": results}), 201
+
+    # ---------------------------------------------------------------- the drive (staging folder)
+    def drive_or_error():
+        """The group's drive folder, or (None, error response) when off or not reachable."""
+        box = g.ctx.inbox
+        if box is None:
+            return None, (jsonify({"error": "No drive is set up"}), 404)
+        if not box.available():
+            return None, (jsonify({"error": "The drive is not available right now", "asleep": True}), 503)
+        return box, None
+
+    @app.route("/drive/status")
+    def drive_status():
+        box = g.ctx.inbox
+        if box is None:
+            return jsonify({"enabled": False, "available": False, "wake_configured": False})
+        return jsonify({"enabled": True, "available": box.available(), "wake_configured": waker.configured})
+
+    @app.route("/drive/list")
+    def drive_list():
+        box, err = drive_or_error()
+        return err if err else jsonify({"files": box.list()})
+
+    @app.route("/drive/thumb/<name>")
+    def drive_thumb(name):
+        box, err = drive_or_error()
+        if err:
+            return err
+        try:
+            data = box.thumb(name)
+        except (InboxError, OSError):
+            abort(404)
+        resp = Response(data, mimetype="image/jpeg")
+        resp.headers["Cache-Control"] = "private, max-age=3600"
+        return resp
+
+    @app.route("/drive/upload", methods=["POST"])
+    def drive_upload():
+        box, err = drive_or_error()
+        if err:
+            return err
+        files = [f for f in request.files.getlist("files[]") if f and f.filename]
+        try:
+            stamps = json.loads(request.form.get("modified", "[]"))
+        except ValueError:
+            stamps = []
+        saved, rejected = [], []
+        for i, f in enumerate(files):
+            try:
+                ms = stamps[i] if i < len(stamps) else None
+                saved.append(box.save(f.filename, f.read(), float(ms) / 1000.0 if ms else None))
+            except (InboxError, ValueError, TypeError, OSError) as exc:
+                rejected.append({"name": f.filename, "reason": str(exc)})
+        if saved:
+            audit("drive_upload", files=len(saved))
+        return jsonify({"saved": saved, "rejected": rejected}), (201 if saved else 400)
+
+    @app.route("/drive/delete", methods=["POST"])
+    def drive_delete():
+        box, err = drive_or_error()
+        if err:
+            return err
+        names = (request.get_json(silent=True) or {}).get("names") or []
+        removed = []
+        for n in names:
+            try:
+                if box.delete(n):
+                    removed.append(n)
+            except (InboxError, OSError):
+                continue
+        if removed:
+            audit("drive_delete", files=len(removed))
+        return jsonify({"deleted": removed})
 
     @app.route("/report/<batch_id>")
     def view_report(batch_id):

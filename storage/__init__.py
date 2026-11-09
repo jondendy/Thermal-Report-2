@@ -5,6 +5,7 @@ import os
 
 from .base import StorageBackend, StorageError, StorageNotFound, clean_path
 from .local import LocalStorage
+from .prefixed import PrefixedStorage
 
 
 def _truthy(value: str) -> bool:
@@ -40,5 +41,5 @@ def create_storage(env=None) -> StorageBackend:
     raise StorageError(f"Unknown STORAGE_BACKEND {kind!r} (use local, webdav or smb)")
 
 
-__all__ = ["StorageBackend", "StorageError", "StorageNotFound", "LocalStorage",
+__all__ = ["StorageBackend", "StorageError", "StorageNotFound", "LocalStorage", "PrefixedStorage",
            "create_storage", "clean_path"]

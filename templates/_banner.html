@@ -1,0 +1,19 @@
+{% if org_banner %}
+<div class="org-banner" style="background: {{ org_banner.colour }}; color: {{ org_banner.text }};">
+    <span>Working for: <strong>{{ org_banner.name }}</strong></span>
+    {% if org_banner.orgs %}
+    <form method="post" action="/switch_group" style="margin:0;">
+        <label for="orgSwitch" style="font-size:12px; opacity:.85;">Switch group</label>
+        <select id="orgSwitch" name="org" onchange="this.form.submit()">
+            {% for o in org_banner.orgs %}<option value="{{ o.slug }}"{% if o.slug == org_banner.current %} selected{% endif %}>{{ o.name }}</option>{% endfor %}
+        </select>
+    </form>
+    {% endif %}
+    <span class="org-who">{{ org_banner.user }}{% if org_banner.is_admin %} &middot; <a href="/activity" style="color:inherit;">Activity</a>{% endif %} &middot; <a href="/" style="color:inherit;">Home</a></span>
+</div>
+<style>
+    .org-banner { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 8px 16px; font: 14px Arial, sans-serif; position: sticky; top: 0; z-index: 1100; }
+    .org-banner .org-who { margin-left: auto; font-size: 12px; opacity: .9; }
+    .org-banner select { padding: 3px 6px; font-size: 13px; }
+</style>
+{% endif %}
