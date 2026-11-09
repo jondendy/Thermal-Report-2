@@ -9,6 +9,8 @@ uploads/
 
 # Secrets / environment
 .env
+# Who belongs to which group (email addresses) - keep out of git; copy orgs.example/ to orgs/
+orgs/
 
 # Python
 __pycache__/

@@ -34,10 +34,6 @@ class Settings:
     cf_team_domain: str = ""             # e.g. yourteam.cloudflareaccess.com
     cf_aud: str = ""                     # the Access application's "Application Audience (AUD) Tag"
     dev_user_email: str = ""             # only with AUTH_MODE=dev
-    inbox_root: str = ""                 # folder (e.g. a mounted Synology share) for the "drive" buttons; blank = off
-    inbox_delete_after: bool = False     # remove a picture from the drive once it has been processed
-    inbox_keep_days: int = 30            # used by cleanup_inbox.py
-    inbox_max_files: int = 500           # per group
     wake_mac: str = ""                   # Wake-on-LAN for a sleeping NAS; off until MAC and host are set
     wake_broadcast: str = ""             # e.g. 192.168.1.255 (blank = 255.255.255.255)
     nas_host: str = ""                   # NAS name or IP, probed to see whether it is awake
@@ -70,10 +66,6 @@ def load_settings(env=None) -> Settings:
         cf_team_domain=env.get("CF_ACCESS_TEAM_DOMAIN", "").strip(),
         cf_aud=env.get("CF_ACCESS_AUD", "").strip(),
         dev_user_email=env.get("DEV_USER_EMAIL", "").strip(),
-        inbox_root=env.get("INBOX_ROOT", "").strip(),
-        inbox_delete_after=str(env.get("INBOX_DELETE_AFTER_PROCESS", "0")).lower() in ("1", "true", "yes"),
-        inbox_keep_days=max(1, _int(env, "INBOX_KEEP_DAYS", 30)),
-        inbox_max_files=max(1, _int(env, "INBOX_MAX_FILES", 500)),
         wake_mac=env.get("WAKE_MAC", "").strip(),
         wake_broadcast=env.get("WAKE_BROADCAST", "").strip(),
         nas_host=env.get("NAS_HOST", "").strip(),

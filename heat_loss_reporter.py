@@ -66,8 +66,11 @@ class HeatLossReporter:
         # keys starting with "_" (e.g. "_metadata") are not spot types
         self.recommendations: Dict[str, Dict] = OrderedDict(
             (k, v) for k, v in data.items() if not k.startswith("_"))
-        with open(content_file or _DEFAULT_CONTENT, "r", encoding="utf-8") as fh:
+        with open(_DEFAULT_CONTENT, "r", encoding="utf-8") as fh:
             self._content = json.load(fh)
+        if content_file:                      # a group's own file replaces just the parts it contains
+            with open(content_file, "r", encoding="utf-8") as fh:
+                self._content.update({k: v for k, v in json.load(fh).items() if not k.startswith("_")})
 
     @property
     def spot_types(self) -> List[str]:
@@ -76,7 +79,8 @@ class HeatLossReporter:
     def content(self, org_name: str = "") -> Dict:
         """The fixed wording of the report, with the organisation's name filled in."""
         filled = _fill(self._content, org_name.strip() or "your local energy group")
-        filled["general_measures"] = _safe_links(filled.get("general_measures", []))
+        extra = filled.pop("extra_measures", None) or []        # a group's own entries, after the standard ones
+        filled["general_measures"] = _safe_links(list(filled.get("general_measures", [])) + list(extra))
         return filled
 
     # ------------------------------------------------------------------ point text

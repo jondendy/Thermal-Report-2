@@ -103,27 +103,6 @@ Wake-on-LAN packet (at most one every 30 seconds, and none if the NAS is already
 `GET /storage_status` reports whether it is awake. Unset, both do nothing. Nothing in the upload or survey
 flow calls them yet; they are ready for the planned image inbox.
 
-## The drive: upload now, process later (optional)
-
-Set `INBOX_ROOT` to a mounted folder (for example a Synology share) and two buttons appear under
-Select Images / Process Batch:
-
-* **Upload to drive** saves the pictures you have selected (or opens a picker if none) to your group's folder
-  `<INBOX_ROOT>/<group>/`. The pictures keep their original date.
-* **Select from drive** shows thumbnails, newest first. Tick up to the batch size and press *Use selected*;
-  they replace any local selection and are the next batch when you press **Process Batch**.
-
-Pictures stay on the drive after processing unless `INBOX_DELETE_AFTER_PROCESS=true`. Run `cleanup_inbox.py`
-daily to remove anything older than `INBOX_KEEP_DAYS` (30). If the drive is asleep and Wake-on-LAN is set up
-the page wakes it and waits; the web server never hangs on an unmounted share.
-
-Mount the share so a sleeping NAS does not stop boot (CIFS example for `/etc/fstab`):
-
-    //NAS_IP/SHARE /mnt/synology cifs credentials=/root/.nas-creds,uid=USER,gid=USER,x-systemd.automount,nofail,_netdev 0 0
-
-Create the marker file once (`touch /mnt/synology/.thermal-mounted`) and set `NAS_MARKER` to its name.
-Clean-up as a cron line: `30 3 * * * cd /path/to/app && venv/bin/python cleanup_inbox.py`
-
 ## Tests
 
 ```bash

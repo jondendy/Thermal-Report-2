@@ -19,3 +19,4 @@ gunicorn>=21.2
 pytest>=8.0
 wsgidav>=4.3             # only used by the WebDAV test
 cheroot>=10.0
+PyJWT[crypto]>=2.8
