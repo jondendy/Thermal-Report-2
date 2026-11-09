@@ -69,6 +69,32 @@ Set `STORAGE_BACKEND` (see `env.example`):
 All code reads/writes through `storage.StorageBackend`, so adding another backend (S3, SFTP, ...) means one new
 class implementing seven small methods.
 
+## Several groups on one installation (optional)
+
+Two or more groups (e.g. neighbouring energy groups that share cameras and operators) can use one
+server. Each has its own name, colour, settings, report wording and **its own folder of surveys**; people
+see only the groups they belong to, and a person in several groups chooses which one a job is for.
+
+1. `cp -r orgs.example orgs`, then edit `orgs/orgs.json`: each group's name, colour and the email
+   addresses of its members (the same email can be in several groups). `admins` can open every group and
+   read the activity page. Optionally edit `orgs/<group>/report_content.json`: only the parts it contains
+   replace the standard wording; `extra_measures` adds entries to the closing page (e.g. local help).
+   `orgs/` holds email addresses, so it is kept out of git.
+2. Set in `.env`: a long random `SECRET_KEY`, `ORGS_FILE=orgs/orgs.json`, `AUTH_MODE=cloudflare`,
+   `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` (see `env.example`).
+3. **Move the surveys you already have** into their group, with the app stopped:
+   `python migrate_to_org.py chesham --dry-run`, then without `--dry-run`.
+4. Everyone still needs to be allowed by the Cloudflare Access policy as well - Cloudflare is the front
+   door, `orgs.json` decides which group(s) each person sees. Add new people in both places.
+
+How it is kept safe: the app checks Cloudflare's signed token on every request (a request without one, or
+with a forged email, gets nothing); the folder a group can reach is fixed by the group, not by anything the
+browser sends; removing someone from `orgs.json` takes effect on their next click; switching group goes
+back to the home page, and another group's surveys simply do not exist from the inside. Every upload, save,
+report, delete, re-detect and group switch is recorded (who, which group, when, from where) on the
+**Activity** page. Each saved report also records who generated it. People who are not in any group see a
+page that does not reveal which groups exist. With `ORGS_FILE` unset nothing changes: one group, no sign-in check.
+
 ## Waking a sleeping NAS (optional)
 
 If the survey data or images live on a Synology that sleeps, set `WAKE_MAC`, `NAS_HOST` (and
@@ -77,10 +103,31 @@ Wake-on-LAN packet (at most one every 30 seconds, and none if the NAS is already
 `GET /storage_status` reports whether it is awake. Unset, both do nothing. Nothing in the upload or survey
 flow calls them yet; they are ready for the planned image inbox.
 
+## The drive: upload now, process later (optional)
+
+Set `INBOX_ROOT` to a mounted folder (for example a Synology share) and two buttons appear under
+Select Images / Process Batch:
+
+* **Upload to drive** saves the pictures you have selected (or opens a picker if none) to your group's folder
+  `<INBOX_ROOT>/<group>/`. The pictures keep their original date.
+* **Select from drive** shows thumbnails, newest first. Tick up to the batch size and press *Use selected*;
+  they replace any local selection and are the next batch when you press **Process Batch**.
+
+Pictures stay on the drive after processing unless `INBOX_DELETE_AFTER_PROCESS=true`. Run `cleanup_inbox.py`
+daily to remove anything older than `INBOX_KEEP_DAYS` (30). If the drive is asleep and Wake-on-LAN is set up
+the page wakes it and waits; the web server never hangs on an unmounted share.
+
+Mount the share so a sleeping NAS does not stop boot (CIFS example for `/etc/fstab`):
+
+    //NAS_IP/SHARE /mnt/synology cifs credentials=/root/.nas-creds,uid=USER,gid=USER,x-systemd.automount,nofail,_netdev 0 0
+
+Create the marker file once (`touch /mnt/synology/.thermal-mounted`) and set `NAS_MARKER` to its name.
+Clean-up as a cron line: `30 3 * * * cd /path/to/app && venv/bin/python cleanup_inbox.py`
+
 ## Tests
 
 ```bash
-pytest                                            # 65 tests, no photos or exiftool needed
+pytest                                            # 105 tests, no photos or exiftool needed
 THERMAL_TEST_IMAGES=/path/to/flir pytest          # also runs the real FLIR extraction tests
 ```
 
