@@ -19,7 +19,7 @@ import io
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -37,6 +37,7 @@ BATCH_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
 ALLOWED_EXT = {".jpg", ".jpeg"}
 SEVERITIES = SEVERITY_ORDER
 MAX_NOTE = 5000
+MAX_BATCH_NAME = 120
 MAX_EXTRAS = 12
 
 
@@ -53,6 +54,37 @@ def valid_batch_id(batch_id: str) -> str:
 def new_batch_id(filenames: List[str]) -> str:
     digest = hashlib.md5("".join(sorted(filenames)).encode()).hexdigest()[:8]
     return f"batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{digest}"
+
+
+def picture_date(raw: bytes, fallback: Optional[float] = None) -> Optional[date]:
+    """The day a picture was taken: from the camera's own record inside the file, else from the
+    file's date (when the caller knows it). None when neither is believable."""
+    found = None
+    try:
+        exif = Image.open(io.BytesIO(raw)).getexif()
+        text = exif.get_ifd(0x8769).get(36867) or exif.get_ifd(0x8769).get(36868) or exif.get(306)
+        if text:
+            found = datetime.strptime(str(text).strip()[:10], "%Y:%m:%d").date()
+    except Exception:                                   # no camera record, or an unreadable one
+        found = None
+    if found is None and fallback:
+        try:
+            found = datetime.fromtimestamp(float(fallback)).date()
+        except (ValueError, OverflowError, OSError):
+            found = None
+    if found is None or not (date(2000, 1, 1) <= found <= date.today() + timedelta(days=1)):
+        return None
+    return found
+
+
+def taken_sentence(days: List[date]) -> str:
+    """'Survey pictures taken: 12 November 2026.' (or a first-to-last range)."""
+    days = sorted(set(days))
+    if not days:
+        return ""
+    fmt = lambda d: f"{d.day} {d.strftime('%B %Y')}"
+    when = fmt(days[0]) if len(days) == 1 else f"{fmt(days[0])} to {fmt(days[-1])}"
+    return f"Survey pictures taken: {when}."
 
 
 def _clean_text(value: Any, limit: int = MAX_NOTE) -> str:
@@ -109,8 +141,11 @@ class BatchService:
         return hot_spots, spots
 
     def process_batch(self, batch_id: str, files: List[Tuple[str, bytes]],
-                      sensitivity: Optional[str] = None) -> Dict:
-        """files: [(original_filename, raw_bytes)]. Returns the results dict."""
+                      sensitivity: Optional[str] = None, name: str = "", property_address: str = "",
+                      file_dates: Optional[List[Optional[float]]] = None) -> Dict:
+        """files: [(original_filename, raw_bytes)]. Returns the results dict.
+        name: what people call this batch; property_address: pre-filled on the points page;
+        file_dates: each file's own date (seconds), used when the picture has no camera date."""
         from thermal_analyzer import ThermalAnalyzer
         from warm_areas import PRESETS
 
@@ -122,14 +157,16 @@ class BatchService:
         self.storage.makedirs(idir)
 
         results: Dict[str, Any] = {
-            "batch_id": batch_id, "timestamp": datetime.now().isoformat(),
+            "batch_id": batch_id, "name": _clean_text(name, MAX_BATCH_NAME).strip(),
+            "timestamp": datetime.now().isoformat(),
             "images": [], "summary": {"total_images": 0},
         }
         analysis_images: List[Dict] = []
         all_stats: List[Dict] = []
         used_names = set()
+        days: List[date] = []
 
-        for original_name, raw in files:
+        for index, (original_name, raw) in enumerate(files):
             name = secure_filename(original_name or "")
             if os.path.splitext(name)[1].lower() not in ALLOWED_EXT:
                 continue
@@ -176,6 +213,9 @@ class BatchService:
                     "scale": palette_mod.legend(temp, self.palette),
                 })
                 all_stats.append(clean_stats)
+                day = picture_date(raw, file_dates[index] if file_dates and index < len(file_dates) else None)
+                if day:
+                    days.append(day)
             except Exception as exc:                       # one bad image must not sink the batch
                 logger.exception("Failed processing %s", name)
                 results["images"].append({"filename": name, "image_name": name, "error": str(exc)})
@@ -188,10 +228,17 @@ class BatchService:
                 "min_temperature": min(s["min"] for s in all_stats),
                 "max_temperature": max(s["max"] for s in all_stats),
             }
+        results["pictures_taken"] = [d.isoformat() for d in sorted(set(days))]
         self.storage.write_json(f"{rdir}/results.json", results)
         self.storage.write_json(f"{rdir}/thermal_analysis.json", {
             "batch_id": batch_id, "timestamp": results["timestamp"], "sensitivity": sensitivity,
             "images": analysis_images})
+        address, taken = _clean_text(property_address, 300).strip(), taken_sentence(days)
+        if all_stats and (address or taken):            # what the points page starts with
+            self.storage.write_json(f"{rdir}/hotspot_labels.json", {
+                "batch_id": batch_id, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "property_address": address, "inspector_name": "",
+                "general_notes": taken + "\n" if taken else "", "image_notes": {}, "spots": []})
         return results
 
     # ------------------------------------------------------------------ reading
@@ -204,10 +251,19 @@ class BatchService:
                 data = self.storage.read_json(f"reports/batches/{name}/results.json")
             except (StorageError, ValueError):
                 continue
-            out.append({"batch_id": name, "timestamp": data.get("timestamp"),
+            out.append({"batch_id": name, "name": data.get("name", ""), "timestamp": data.get("timestamp"),
                         "image_count": len(data.get("images", [])),
                         "summary": data.get("summary", {})})
         return out
+
+    def batch_name(self, batch_id: str) -> str:
+        return self.get_results(batch_id).get("name", "")
+
+    def rename_batch(self, batch_id: str, name: str) -> str:
+        results = self.get_results(batch_id)
+        results["name"] = _clean_text(name, MAX_BATCH_NAME).strip()
+        self.storage.write_json(f"{self.rdir(batch_id)}/results.json", results)
+        return results["name"]
 
     def get_results(self, batch_id: str) -> Dict:
         return self.storage.read_json(f"{self.rdir(batch_id)}/results.json")
@@ -327,7 +383,7 @@ class BatchService:
                            "image_note": (labels.get("image_notes") or {}).get(name, ""),
                            "picture": picture, "scale": self.image_scale(batch_id, img),
                            "spots": spots})
-        return {"batch_id": batch_id, "images": images,
+        return {"batch_id": batch_id, "name": self.batch_name(batch_id), "images": images,
                 "sensitivity": analysis.get("sensitivity", self.sensitivity),
                 "general_notes": labels.get("general_notes", ""),
                 "property_address": labels.get("property_address", ""),

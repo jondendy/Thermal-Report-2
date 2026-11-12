@@ -256,6 +256,7 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     def upload_files():
         drive_names = [n for n in request.form.getlist("drive_files") if n]
         files = [f for f in request.files.getlist("files[]") if f and f.filename]
+        folder = ""
         if drive_names and files:
             return jsonify({"error": "Choose pictures from your computer or from the drive, not both"}), 400
         if drive_names:                                  # pictures already parked on the drive
@@ -265,7 +266,9 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
             if len(drive_names) > settings.batch_size:
                 return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
             try:
-                payload = [(n, box.read(n)) for n in drive_names]
+                folder = box.folder_name(request.form.get("drive_folder", ""))
+                payload = [(n, box.read(n, folder)) for n in drive_names]
+                dates = [box.modified(n, folder) for n in drive_names]
             except InboxError as exc:
                 return jsonify({"error": str(exc)}), 400
             source = "drive"
@@ -276,10 +279,16 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
                 return jsonify({"error": "No valid FLIR images provided"}), 400
             if len(valid) > settings.batch_size:
                 return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
+            stamps = stamp_list(request.form.get("modified"))      # the browser's date for each file, in order
+            by_name = {f.filename: stamps[i] for i, f in enumerate(files) if i < len(stamps)}
             payload, source = [(f.filename, f.read()) for f in valid], "computer"
+            dates = [by_name.get(f.filename) for f in valid]
 
+        # a drive folder is usually the property, so it names the batch and starts the address off
+        name = (request.form.get("batch_name") or "").strip() or folder
         batch_id = new_batch_id([n for n, _ in payload])
-        results = service.process_batch(batch_id, payload, sensitivity=request.form.get("sensitivity"))
+        results = service.process_batch(batch_id, payload, sensitivity=request.form.get("sensitivity"),
+                                        name=name, property_address=folder, file_dates=dates)
         if not results.get("summary", {}).get("total_images"):
             service.delete_batch(batch_id)
             errors = "; ".join(i.get("error", "") for i in results["images"] if i.get("error"))
@@ -287,13 +296,35 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         if source == "drive" and settings.inbox_delete_after:
             for n, _ in payload:                          # the batch holds its own copy now
                 try:
-                    g.ctx.inbox.delete(n)
+                    g.ctx.inbox.delete(n, folder)
                 except (InboxError, OSError):
                     pass
-        audit("upload", batch_id, images=results["summary"]["total_images"], source=source)
-        return jsonify({"success": True, "batch_id": batch_id, "results": results}), 201
+        audit("upload", batch_id, images=results["summary"]["total_images"], source=source,
+              **({"name": results["name"]} if results["name"] else {}), **({"folder": folder} if folder else {}))
+        return jsonify({"success": True, "batch_id": batch_id, "name": results["name"], "results": results}), 201
+
+    @app.route("/rename/<batch_id>", methods=["POST"])
+    def rename_batch(batch_id):
+        batch_or_404(batch_id)
+        name = service.rename_batch(batch_id, (request.get_json(silent=True) or {}).get("name", ""))
+        audit("rename_batch", batch_id, name=name)
+        return jsonify({"success": True, "name": name})
 
     # ---------------------------------------------------------------- the drive (staging folder)
+    def stamp_list(text) -> list:
+        """Browser file dates (milliseconds, JSON list) as seconds; anything odd becomes None."""
+        try:
+            raw = json.loads(text or "[]")
+        except ValueError:
+            return []
+        out = []
+        for v in raw if isinstance(raw, list) else []:
+            try:
+                out.append(float(v) / 1000.0 if v else None)
+            except (TypeError, ValueError):
+                out.append(None)
+        return out
+
     def drive_or_error():
         """The group's drive folder, or (None, error response) when off or not reachable."""
         box = g.ctx.inbox
@@ -310,10 +341,22 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
             return jsonify({"enabled": False, "available": False, "wake_configured": False})
         return jsonify({"enabled": True, "available": box.available(), "wake_configured": waker.configured})
 
+    def drive_folder_arg(box, value):
+        """The folder named in a request, cleaned; (None, error response) if it is not acceptable."""
+        try:
+            return box.folder_name(value or ""), None
+        except InboxError as exc:
+            return None, (jsonify({"error": str(exc)}), 400)
+
     @app.route("/drive/list")
     def drive_list():
         box, err = drive_or_error()
-        return err if err else jsonify({"files": box.list()})
+        if err:
+            return err
+        folder, err = drive_folder_arg(box, request.args.get("folder"))
+        if err:
+            return err
+        return jsonify({"folder": folder, "folders": box.folders(), "files": box.list(folder)})
 
     @app.route("/drive/thumb/<name>")
     def drive_thumb(name):
@@ -321,7 +364,7 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         if err:
             return err
         try:
-            data = box.thumb(name)
+            data = box.thumb(name, request.args.get("folder", ""))
         except (InboxError, OSError):
             abort(404)
         resp = Response(data, mimetype="image/jpeg")
@@ -333,43 +376,46 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         box, err = drive_or_error()
         if err:
             return err
+        folder, err = drive_folder_arg(box, request.form.get("folder"))
+        if err:
+            return err
         files = [f for f in request.files.getlist("files[]") if f and f.filename]
-        try:
-            stamps = json.loads(request.form.get("modified", "[]"))
-        except ValueError:
-            stamps = []
+        stamps = stamp_list(request.form.get("modified"))
         saved, rejected = [], []
         for i, f in enumerate(files):
             try:
-                ms = stamps[i] if i < len(stamps) else None
-                saved.append(box.save(f.filename, f.read(), float(ms) / 1000.0 if ms else None))
-            except (InboxError, ValueError, TypeError, OSError) as exc:
+                saved.append(box.save(f.filename, f.read(), stamps[i] if i < len(stamps) else None, folder))
+            except (InboxError, OSError) as exc:
                 rejected.append({"name": f.filename, "reason": str(exc)})
         if saved:
-            audit("drive_upload", files=len(saved))
-        return jsonify({"saved": saved, "rejected": rejected}), (201 if saved else 400)
+            audit("drive_upload", files=len(saved), **({"folder": folder} if folder else {}))
+        return jsonify({"saved": saved, "rejected": rejected, "folder": folder}), (201 if saved else 400)
 
     @app.route("/drive/delete", methods=["POST"])
     def drive_delete():
         box, err = drive_or_error()
         if err:
             return err
-        names = (request.get_json(silent=True) or {}).get("names") or []
+        body = request.get_json(silent=True) or {}
+        folder, err = drive_folder_arg(box, body.get("folder"))
+        if err:
+            return err
         removed = []
-        for n in names:
+        for n in body.get("names") or []:
             try:
-                if box.delete(n):
+                if box.delete(n, folder):
                     removed.append(n)
             except (InboxError, OSError):
                 continue
         if removed:
-            audit("drive_delete", files=len(removed))
+            audit("drive_delete", files=len(removed), **({"folder": folder} if folder else {}))
         return jsonify({"deleted": removed})
 
     @app.route("/report/<batch_id>")
     def view_report(batch_id):
         batch_or_404(batch_id)
-        return render_template("report.html", batch_id=batch_id, report=service.get_results(batch_id))
+        results = service.get_results(batch_id)
+        return render_template("report.html", batch_id=batch_id, report=results, batch_name=results.get("name", ""))
 
     @app.route("/api/batches")
     def api_batches():

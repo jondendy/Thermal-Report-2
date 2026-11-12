@@ -43,7 +43,7 @@
         <div class="header">
             <h1>📊 Batch Report</h1>
             <div class="batch-info">
-                <strong>Batch ID:</strong> {{ batch_id }}<br>
+                {% if batch_name %}<strong>Batch name:</strong> {{ batch_name }}<br>{% endif %}<strong>Batch ID:</strong> {{ batch_id }}<br>
                 <strong>Processed:</strong> {{ report.timestamp[:19] if report.timestamp else 'N/A' }}
             </div>
         </div>

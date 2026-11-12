@@ -21,17 +21,14 @@ def run(root: str, days: float, marker: str = "", dry_run: bool = False) -> int:
     if not probe.available():
         print("The drive is not available (not mounted or marker file missing) - nothing deleted.")
         return 0
-    total, cutoff = 0, time.time() - days * 86400
+    total = 0
     for group in sorted(os.listdir(root)):
         if not os.path.isdir(os.path.join(root, group)):
             continue
         box = Inbox(root, group, marker=marker)
-        for f in box.list():
-            if f["modified"] < cutoff:
-                print(("Would delete " if dry_run else "Deleting ") + f"{group}/{f['name']}")
-                if not dry_run:
-                    box.delete(f["name"])
-                total += 1
+        for name in box.cleanup(days, dry_run=dry_run):
+            print(("Would delete " if dry_run else "Deleting ") + f"{group}/{name}")
+            total += 1
     print(f"{total} picture(s) {'would be ' if dry_run else ''}removed (older than {days:g} days).")
     return total
 

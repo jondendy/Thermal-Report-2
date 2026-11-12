@@ -63,7 +63,7 @@
 <body>{% include "_banner.html" %}
     <div class="card">
         <h1>Define Heat Points &amp; Edit the Report Text</h1>
-        <p><a href="/">&larr; Home</a> &nbsp;|&nbsp; <strong>Batch:</strong> {{ batch_id }}</p>
+        <p><a href="/">&larr; Home</a> &nbsp;|&nbsp; <strong>Batch:</strong> {% if state.name %}{{ state.name }} <small style="color:#888;">({{ batch_id }})</small>{% else %}{{ batch_id }}{% endif %}</p>
         <p class="hint">
             Give each point a <b>type</b> and <b>number</b> (the same number in two pictures means the same feature).
             Under each point, the dashed box shows <b>exactly what the report will say</b>. Edit the generated comment,

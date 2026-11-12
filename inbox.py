@@ -3,7 +3,8 @@
 "Select from drive" to make the next batch.
 
 Safety rules kept in one place:
-  * a group only ever sees its own sub-folder (<INBOX_ROOT>/<group>/), flat, no sub-folders;
+  * a group only ever sees its own sub-folder (<INBOX_ROOT>/<group>/), with one level of folders
+    inside it (usually one per property) and nothing deeper;
   * names are cleaned, must be .jpg/.jpeg, and must really be pictures;
   * checking whether the drive is there can never hang the web server (a drive that is asleep or
     unmounted makes network folders block for a long time): it is asked on a side thread with a time limit.
@@ -21,6 +22,8 @@ from werkzeug.utils import secure_filename
 
 EXTENSIONS = (".jpg", ".jpeg")
 MAX_NAME = 100
+MAX_FOLDER = 80
+FOLDER_CHARS = " -_,.'()&"          # besides letters and digits
 THUMB = (240, 180)
 
 
@@ -74,51 +77,102 @@ class Inbox:
             raise InboxError(f"{name!r} is not a .jpg picture name")
         return clean
 
-    def _path(self, name: str) -> str:
-        path = os.path.realpath(os.path.join(self.folder, self._name(name)))
-        if os.path.dirname(path) != os.path.realpath(self.folder):
+    @staticmethod
+    def folder_name(name: str) -> str:
+        """A tidy folder name ('' = the main folder). Folders are one level deep and are usually a
+        property address, so spaces and commas are kept; anything that could leave the folder is refused."""
+        raw = str(name or "").strip()
+        if not raw:
+            return ""
+        if any(c in raw for c in "/\\\x00") or raw.startswith("."):
+            raise InboxError("Folder names cannot contain slashes or start with a dot")
+        clean = "".join(c for c in raw if c.isalnum() or c in FOLDER_CHARS)
+        clean = " ".join(clean.split()).rstrip(". ")[:MAX_FOLDER].rstrip(". ")
+        if not clean or clean.startswith("."):
+            raise InboxError(f"{name!r} is not a usable folder name")
+        return clean
+
+    def _dir(self, folder: str = "") -> str:
+        clean = self.folder_name(folder)
+        path = os.path.realpath(os.path.join(self.folder, clean)) if clean else os.path.realpath(self.folder)
+        if clean and os.path.dirname(path) != os.path.realpath(self.folder):
+            raise InboxError("Not a folder on this drive")
+        return path
+
+    def _path(self, name: str, folder: str = "") -> str:
+        base = self._dir(folder)
+        path = os.path.realpath(os.path.join(base, self._name(name)))
+        if os.path.dirname(path) != base:
             raise InboxError("Not a file in this drive folder")
         return path
 
-    # ------------------------------------------------------------------ files
-    def list(self) -> List[Dict]:
+    # ------------------------------------------------------------------ folders
+    def folders(self) -> List[Dict]:
+        """Folders in the group's drive folder, newest first."""
         if not os.path.isdir(self.folder):
             return []
-        files = []
+        out = []
         for entry in os.scandir(self.folder):
+            if entry.is_dir() and not entry.name.startswith((".", "@", "#")):     # skip NAS housekeeping folders
+                try:
+                    if self.folder_name(entry.name) != entry.name:
+                        continue                                  # made by hand with a name we would not accept
+                except InboxError:
+                    continue
+                files = self.list(entry.name)
+                newest = max([f["modified"] for f in files] or [int(entry.stat().st_mtime)])
+                out.append({"name": entry.name, "count": len(files), "modified": newest})
+        return sorted(out, key=lambda f: (-f["modified"], f["name"].lower()))
+
+    def _count(self) -> int:
+        return len(self.list()) + sum(f["count"] for f in self.folders())
+
+    # ------------------------------------------------------------------ files
+    def list(self, folder: str = "") -> List[Dict]:
+        base = self._dir(folder)
+        if not os.path.isdir(base):
+            return []
+        files = []
+        for entry in os.scandir(base):
             if entry.is_file() and os.path.splitext(entry.name)[1].lower() in EXTENSIONS:
                 st = entry.stat()
                 files.append({"name": entry.name, "size": st.st_size, "modified": int(st.st_mtime)})
         return sorted(files, key=lambda f: (-f["modified"], f["name"]))
 
-    def save(self, name: str, data: bytes, modified: Optional[float] = None) -> str:
+    def save(self, name: str, data: bytes, modified: Optional[float] = None, folder: str = "") -> str:
         clean = self._name(name)
-        if len(self.list()) >= self.max_files:
-            raise InboxError(f"The drive folder already holds {self.max_files} pictures - delete some first")
+        base = self._dir(folder)
+        if self._count() >= self.max_files:
+            raise InboxError(f"The drive already holds {self.max_files} pictures for this group - delete some first")
         try:
             Image.open(io.BytesIO(data)).verify()
         except Exception:
             raise InboxError(f"{clean} is not a readable JPEG picture")
+        os.makedirs(base, exist_ok=True)
         stem, ext = os.path.splitext(clean)
         final, n = clean, 1
-        while os.path.exists(os.path.join(self.folder, final)):      # never overwrite someone else's picture
+        while os.path.exists(os.path.join(base, final)):             # never overwrite someone else's picture
             final, n = f"{stem}-{n}{ext}", n + 1
-        path = os.path.join(self.folder, final)
+        path = os.path.join(base, final)
         with open(path, "wb") as fh:
             fh.write(data)
         if modified and 946684800 <= modified <= time.time() + 86400:   # keep the picture's own date (2000-01-01 .. tomorrow)
             os.utime(path, (modified, modified))
         return final
 
-    def read(self, name: str) -> bytes:
-        path = self._path(name)
+    def modified(self, name: str, folder: str = "") -> Optional[float]:
+        path = self._path(name, folder)
+        return os.path.getmtime(path) if os.path.isfile(path) else None
+
+    def read(self, name: str, folder: str = "") -> bytes:
+        path = self._path(name, folder)
         if not os.path.isfile(path):
             raise InboxError(f"{name} is not on the drive any more")
         with open(path, "rb") as fh:
             return fh.read()
 
-    def thumb(self, name: str) -> bytes:
-        path = self._path(name)
+    def thumb(self, name: str, folder: str = "") -> bytes:
+        path = self._path(name, folder)
         if not os.path.isfile(path):
             raise InboxError(f"{name} is not on the drive any more")
         with Image.open(path) as img:
@@ -129,17 +183,32 @@ class Inbox:
             img.save(buf, "JPEG", quality=72)
         return buf.getvalue()
 
-    def delete(self, name: str) -> bool:
-        path = self._path(name)
-        if os.path.isfile(path):
-            os.remove(path)
-            return True
-        return False
+    def delete(self, name: str, folder: str = "") -> bool:
+        path = self._path(name, folder)
+        if not os.path.isfile(path):
+            return False
+        os.remove(path)
+        self._drop_if_empty(folder)
+        return True
 
-    def cleanup(self, older_than_days: float) -> int:
-        """Delete pictures not modified for this many days. Returns how many."""
-        cutoff, removed = time.time() - older_than_days * 86400, 0
-        for f in self.list():
-            if f["modified"] < cutoff and self.delete(f["name"]):
-                removed += 1
+    def _drop_if_empty(self, folder: str) -> None:
+        """Remove a folder once its last picture has gone (never the main folder, never one with other files)."""
+        if not self.folder_name(folder):
+            return
+        try:
+            os.rmdir(self._dir(folder))                # fails, harmlessly, if anything is still inside
+        except OSError:
+            pass
+
+    def cleanup(self, older_than_days: float, dry_run: bool = False) -> List[str]:
+        """Delete pictures not modified for this many days, in the main folder and every folder.
+        Returns what was (or with dry_run, would be) removed."""
+        cutoff, removed = time.time() - older_than_days * 86400, []
+        for folder in [""] + [f["name"] for f in self.folders()]:
+            for f in self.list(folder):
+                if f["modified"] < cutoff:
+                    if dry_run or self.delete(f["name"], folder):
+                        removed.append(f"{folder}/{f['name']}" if folder else f["name"])
+            if not dry_run:
+                self._drop_if_empty(folder)
         return removed

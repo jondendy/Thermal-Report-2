@@ -113,6 +113,15 @@ Select Images / Process Batch:
 * **Select from drive** shows thumbnails, newest first. Tick up to the batch size and press *Use selected*;
   they replace any local selection and are the next batch when you press **Process Batch**.
 
+**Folders.** Type a name in *Drive folder* (usually the property address) before *Upload to drive* and the
+pictures go into `<INBOX_ROOT>/<group>/<folder>/`. *Select from drive* shows the folders as buttons; open one,
+*Tick all* and *Use selected*. Folders are one level deep; a folder disappears when its last picture is deleted.
+
+**Batch names.** A batch made from a drive folder takes the folder's name, and the folder name is also filled in
+as the property address on the points page. Any batch can be named in the *Batch name* box or with *Rename* on
+the home page. The day the pictures were taken (from the camera's record in each file, else the file's date)
+is put at the start of the general survey notes, e.g. `Survey pictures taken: 5 November 2026.`
+
 Pictures stay on the drive after processing unless `INBOX_DELETE_AFTER_PROCESS=true`. Run `cleanup_inbox.py`
 daily to remove anything older than `INBOX_KEEP_DAYS` (30). If the drive is asleep and Wake-on-LAN is set up
 the page wakes it and waits; the web server never hangs on an unmounted share.
