@@ -136,7 +136,9 @@ class Inbox:
         for entry in os.scandir(base):
             if entry.is_file() and os.path.splitext(entry.name)[1].lower() in EXTENSIONS:
                 st = entry.stat()
-                files.append({"name": entry.name, "size": st.st_size, "modified": int(st.st_mtime)})
+                # modified = the picture's own date (kept on upload); added = when it reached the drive
+                files.append({"name": entry.name, "size": st.st_size, "modified": int(st.st_mtime),
+                              "added": int(max(st.st_mtime, st.st_ctime))})
         return sorted(files, key=lambda f: (-f["modified"], f["name"]))
 
     def save(self, name: str, data: bytes, modified: Optional[float] = None, folder: str = "") -> str:
@@ -201,12 +203,13 @@ class Inbox:
             pass
 
     def cleanup(self, older_than_days: float, dry_run: bool = False) -> List[str]:
-        """Delete pictures not modified for this many days, in the main folder and every folder.
+        """Delete pictures that have been on the drive for more than this many days (counted from when
+        they were put there, not from when they were taken), in the main folder and every folder.
         Returns what was (or with dry_run, would be) removed."""
         cutoff, removed = time.time() - older_than_days * 86400, []
         for folder in [""] + [f["name"] for f in self.folders()]:
             for f in self.list(folder):
-                if f["modified"] < cutoff:
+                if f["added"] < cutoff:
                     if dry_run or self.delete(f["name"], folder):
                         removed.append(f"{folder}/{f['name']}" if folder else f["name"])
             if not dry_run:

@@ -197,11 +197,25 @@ def test_audit_entries(tmp_path):
 
 
 # ------------------------------------------------------------------ clean-up script
-def test_cleanup_script(tmp_path):
+def test_cleanup_script(tmp_path, monkeypatch):
+    import inbox as inbox_mod
+    real = time.time
     box = Inbox(str(tmp_path), "g"); box.available()
-    box.save("old.jpg", synthetic_jpeg(), modified=time.time() - 40 * 86400)
-    box.save("new.jpg", synthetic_jpeg())
+    box.save("taken-long-ago.jpg", synthetic_jpeg(), modified=real() - 400 * 86400)
+    # a picture taken long ago but put on the drive today is NOT old: age counts from arrival
+    assert cleanup_inbox.run(str(tmp_path), 30) == 0 and len(box.list()) == 1
+    monkeypatch.setattr(inbox_mod.time, "time", lambda: real() + 20 * 86400)       # 20 days later
+    box.save("new.jpg", synthetic_jpeg()); os.utime(box._path("new.jpg"), (real() + 20 * 86400,) * 2)
+    monkeypatch.setattr(inbox_mod.time, "time", lambda: real() + 35 * 86400)       # 35 days after the first
     assert cleanup_inbox.run(str(tmp_path), 30, dry_run=True) == 1 and len(box.list()) == 2
     assert cleanup_inbox.run(str(tmp_path), 30) == 1
     assert [f["name"] for f in box.list()] == ["new.jpg"]
     assert cleanup_inbox.run(str(tmp_path / "nowhere"), 30) == 0
+
+
+def test_cleanup_reads_env_file(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("# comment\nSECRET_KEY=x\nINBOX_ROOT=/mnt/synology\nNAS_MARKER='.thermal-mounted'\nINBOX_KEEP_DAYS=14\n")
+    assert cleanup_inbox.env_from_file(str(env)) == {"INBOX_ROOT": "/mnt/synology", "NAS_MARKER": ".thermal-mounted",
+                                                     "INBOX_KEEP_DAYS": "14"}
+    assert cleanup_inbox.env_from_file(str(tmp_path / "missing")) == {}

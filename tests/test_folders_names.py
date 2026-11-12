@@ -105,11 +105,14 @@ def test_limit_counts_every_folder(tmp_path):
         box.save("c.jpg", synthetic_jpeg())
 
 
-def test_cleanup_covers_folders(tmp_path):
+def test_cleanup_covers_folders(tmp_path, monkeypatch):
+    import inbox as inbox_mod
+    real = time.time
     box = Inbox(str(tmp_path), "g"); box.available()
-    old = time.time() - 40 * 86400
-    box.save("old.jpg", synthetic_jpeg(), modified=old, folder="Old house")
+    box.save("old.jpg", synthetic_jpeg(), folder="Old house")
+    monkeypatch.setattr(inbox_mod.time, "time", lambda: real() + 35 * 86400)       # 35 days later
     box.save("new.jpg", synthetic_jpeg(), folder="New house")
+    os.utime(box._path("new.jpg", "New house"), (real() + 35 * 86400,) * 2)
     assert cleanup_inbox.run(str(tmp_path), 30, dry_run=True) == 1 and len(box.folders()) == 2
     assert cleanup_inbox.run(str(tmp_path), 30) == 1
     assert [f["name"] for f in box.folders()] == ["New house"]
