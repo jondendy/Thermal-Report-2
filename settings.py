@@ -27,6 +27,7 @@ class Settings:
     max_spots: int = 8                   # automatic points kept per image (strongest first)
     secret_key: str = "change-me"
     org_name: str = ""
+    banner_text: str = ""                # e.g. "TEST SITE" - a red bar on every page (blank = none)
     palette: str = "inferno"             # inferno | cividis | grey | camera
     report_content_file: str = ""        # optional replacement for report_content.json
     orgs_file: str = ""                  # groups file (orgs/orgs.json); blank = one group, no sign-in check
@@ -63,6 +64,7 @@ def load_settings(env=None) -> Settings:
         max_spots=max(1, min(_int(env, "MAX_SPOTS_PER_IMAGE", 8), 30)),
         secret_key=env.get("SECRET_KEY", "change-me"),
         org_name=env.get("ORG_NAME", ""),
+        banner_text=env.get("BANNER_TEXT", "").strip()[:80],
         palette=palette,
         report_content_file=env.get("REPORT_CONTENT_FILE", ""),
         orgs_file=env.get("ORGS_FILE", "").strip(),

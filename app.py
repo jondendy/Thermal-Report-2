@@ -146,6 +146,10 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         g.ctx = context_for(chosen)
 
     @app.context_processor
+    def test_banner():
+        return {"test_banner": settings.banner_text}
+
+    @app.context_processor
     def banner():
         ctx = getattr(g, "ctx", None)
         if directory is None or ctx is None:

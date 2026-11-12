@@ -1,3 +1,9 @@
+{% if test_banner %}
+<div class="test-banner" role="note">{{ test_banner }} &mdash; practice site, not the real one. Nothing here is kept for long.</div>
+<style>
+    .test-banner { background: #c62828; color: #fff; text-align: center; font: bold 15px Arial, sans-serif; padding: 8px 12px; letter-spacing: .5px; }
+</style>
+{% endif %}
 {% if org_banner %}
 <div class="org-banner" style="background: {{ org_banner.colour }}; color: {{ org_banner.text }};">
     <span>Working for: <strong>{{ org_banner.name }}</strong></span>
