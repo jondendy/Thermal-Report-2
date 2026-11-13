@@ -28,7 +28,7 @@ class Settings:
     secret_key: str = "change-me"
     org_name: str = ""
     banner_text: str = ""                # e.g. "TEST SITE" - a red bar on every page (blank = none)
-    palette: str = "inferno"             # inferno | cividis | grey | camera
+    palette: str = "inferno"             # inferno | ironbow | cividis | grey | camera
     report_content_file: str = ""        # optional replacement for report_content.json
     orgs_file: str = ""                  # groups file (orgs/orgs.json); blank = one group, no sign-in check
     auth_mode: str = ""                  # cloudflare | dev (required when orgs_file is set)
@@ -52,7 +52,7 @@ def load_settings(env=None) -> Settings:
     if sensitivity not in ("lowest", "low", "medium", "high", "highest"):
         sensitivity = "medium"
     palette = str(env.get("PALETTE", "inferno")).lower().strip()
-    if palette not in ("inferno", "cividis", "grey", "camera"):
+    if palette not in ("inferno", "ironbow", "cividis", "grey", "camera"):
         palette = "inferno"
     return Settings(
         host=env.get("HOST", "0.0.0.0"),

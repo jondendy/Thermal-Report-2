@@ -38,6 +38,9 @@ ALLOWED_EXT = {".jpg", ".jpeg"}
 SEVERITIES = SEVERITY_ORDER
 MAX_NOTE = 5000
 MAX_BATCH_NAME = 120
+LOOK_MODES = ("auto", "batch", "custom")
+LOOK_LIMITS = (-60.0, 200.0)             # degrees C a hand-set scale may cover
+LOOK_MIN_SPAN = 1.0
 MAX_EXTRAS = 12
 
 
@@ -183,7 +186,7 @@ class BatchService:
                     temp, stats = processor.process_single_image(local, display=False)
                     hot_spots, spots = self._spots_from(temp, name, sensitivity)
                     base = None
-                    if self.palette != palette_mod.CAMERA:         # our own colour scale, not the camera's
+                    if self.palette != palette_mod.CAMERA:         # our own colours, not the camera's (see set_look)
                         base = palette_mod.render(temp, self.palette)
                         self.storage.write_bytes(f"{rdir}/{stem}_thermal.jpg", annotate.to_jpeg_bytes(base))
                     labeled = annotate.render_labeled_image(base if base is not None else local,
@@ -232,6 +235,7 @@ class BatchService:
         self.storage.write_json(f"{rdir}/results.json", results)
         self.storage.write_json(f"{rdir}/thermal_analysis.json", {
             "batch_id": batch_id, "timestamp": results["timestamp"], "sensitivity": sensitivity,
+            "look": {"palette": self.palette, "mode": "auto", "lo": None, "hi": None},
             "images": analysis_images})
         address, taken = _clean_text(property_address, 300).strip(), taken_sentence(days)
         if all_stats and (address or taken):            # what the points page starts with
@@ -300,37 +304,55 @@ class BatchService:
                 "excess": excess, "severity": severity}
 
     # ------------------------------------------------------------------ pictures
-    def ensure_base(self, batch_id: str, image_name: str) -> Optional[str]:
+    def look(self, batch_id: str, analysis: Optional[Dict] = None) -> Dict:
+        """How this batch's pictures are drawn: colour style and temperature range.
+        mode: auto (each picture picks its own range) | batch (one range for all) | custom (set by hand)."""
+        saved = (analysis if analysis is not None else self.get_analysis(batch_id)).get("look") or {}
+        pal = str(saved.get("palette") or self.palette).lower()
+        pal = pal if pal in palette_mod.PALETTES or pal == palette_mod.CAMERA else self.palette
+        mode = saved.get("mode") if saved.get("mode") in LOOK_MODES else "auto"
+        lo, hi = saved.get("lo"), saved.get("hi")
+        if mode == "auto" or pal == palette_mod.CAMERA or lo is None or hi is None or not hi > lo:
+            mode, lo, hi = "auto", None, None
+        return {"palette": pal, "mode": mode, "lo": lo, "hi": hi}
+
+    def ensure_base(self, batch_id: str, image_name: str, look: Optional[Dict] = None) -> Optional[str]:
         """File name (inside the reports folder) of the thermal picture drawn from the
         temperatures, creating it for batches processed before it existed. None when the
-        camera's own picture is used instead (PALETTE=camera)."""
-        if self.palette == palette_mod.CAMERA:
+        camera's own picture is used instead."""
+        look = look or self.look(batch_id)
+        if look["palette"] == palette_mod.CAMERA:
             return None
         stem = os.path.splitext(secure_filename(image_name))[0]
         fname = f"{stem}_thermal.jpg"
         path = f"{self.rdir(batch_id)}/{fname}"
         if not self.storage.exists(path):
-            picture = palette_mod.render(self.temperatures(batch_id, image_name), self.palette)
+            picture = palette_mod.render(self.temperatures(batch_id, image_name), look["palette"],
+                                         lo=look["lo"], hi=look["hi"])
             self.storage.write_bytes(path, annotate.to_jpeg_bytes(picture))
         return fname
 
-    def image_scale(self, batch_id: str, entry: Dict) -> Optional[Dict]:
+    def image_scale(self, batch_id: str, entry: Dict, look: Optional[Dict] = None) -> Optional[Dict]:
         """Scale-bar description for one image (computed once for older batches)."""
-        if self.palette == palette_mod.CAMERA:
+        look = look or self.look(batch_id)
+        if look["palette"] == palette_mod.CAMERA:
             return None
         scale = entry.get("scale")
-        if scale and scale.get("palette") == self.palette:
+        if scale and scale.get("palette") == look["palette"]:
             return scale
-        return palette_mod.legend(self.temperatures(batch_id, entry["image_name"]), self.palette)
+        return palette_mod.legend(self.temperatures(batch_id, entry["image_name"]), look["palette"],
+                                  look["lo"], look["hi"])
 
     def report_images(self, batch_id: str) -> List[Dict]:
         """Images in survey order with their scale, for the report builder."""
-        return [{"image_name": e["image_name"], "scale": self.image_scale(batch_id, e)}
-                for e in self.get_analysis(batch_id).get("images", [])]
+        analysis = self.get_analysis(batch_id)
+        look = self.look(batch_id, analysis)
+        return [{"image_name": e["image_name"], "scale": self.image_scale(batch_id, e, look)}
+                for e in analysis.get("images", [])]
 
-    def _draw_labeled(self, batch_id: str, entry: Dict, spots: List[Dict]) -> bytes:
+    def _draw_labeled(self, batch_id: str, entry: Dict, spots: List[Dict], look: Optional[Dict] = None) -> bytes:
         name, shape = entry["image_name"], tuple(entry["shape"])
-        base = self.ensure_base(batch_id, name)
+        base = self.ensure_base(batch_id, name, look)
         if base:
             data = self.storage.read_bytes(f"{self.rdir(batch_id)}/{base}")
             picture = annotate.render_labeled_image(Image.open(io.BytesIO(data)), shape, spots)
@@ -338,6 +360,65 @@ class BatchService:
             with self.storage.local_copy(f"{self.idir(batch_id)}/{name}") as local:
                 picture = annotate.render_labeled_image(local, shape, spots)
         return annotate.to_jpeg_bytes(picture)
+
+    def data_range(self, analysis: Dict) -> Optional[Dict]:
+        """Coldest and warmest reading anywhere in the batch (a guide when setting the range by hand)."""
+        stats = [i.get("stats") or {} for i in analysis.get("images", [])]
+        lows, highs = [s["min"] for s in stats if "min" in s], [s["max"] for s in stats if "max" in s]
+        return {"lo": round(min(lows), 1), "hi": round(max(highs), 1)} if lows and highs else None
+
+    def set_look(self, batch_id: str, palette: str, mode: str = "auto", lo=None, hi=None) -> Dict:
+        """Redraw every picture in the batch in another colour style and/or temperature range.
+        Points, notes and temperatures are untouched: only how the pictures are coloured changes."""
+        palette = str(palette or "").lower().strip()
+        if palette not in palette_mod.PALETTES and palette != palette_mod.CAMERA:
+            raise BatchError("Unknown colour style")
+        if mode not in LOOK_MODES:
+            raise BatchError("Unknown temperature scale choice")
+        analysis = self.get_analysis(batch_id)
+        images = analysis.get("images", [])
+        if palette == palette_mod.CAMERA or mode == "auto":
+            mode, lo, hi = "auto", None, None
+        elif mode == "batch":                              # one range that suits all the pictures together
+            lo, hi = palette_mod.shared_range([self.temperatures(batch_id, i["image_name"]) for i in images])
+            lo, hi = round(lo, 1), round(hi, 1)
+        else:
+            try:
+                lo, hi = round(float(lo), 1), round(float(hi), 1)
+            except (TypeError, ValueError):
+                raise BatchError("Give the coldest and warmest temperature for the scale as numbers")
+            if not (np.isfinite(lo) and np.isfinite(hi)) or not (LOOK_LIMITS[0] <= lo < hi <= LOOK_LIMITS[1]):
+                raise BatchError(f"The scale must run from a lower to a higher temperature, between "
+                                 f"{LOOK_LIMITS[0]:g} and {LOOK_LIMITS[1]:g} degrees C")
+            if hi - lo < LOOK_MIN_SPAN:
+                raise BatchError(f"The scale must cover at least {LOOK_MIN_SPAN:g} degree C")
+        look = {"palette": palette, "mode": mode, "lo": lo, "hi": hi}
+        analysis["look"] = look
+
+        rdir = self.rdir(batch_id)
+        for img in images:
+            name = img["image_name"]
+            if palette == palette_mod.CAMERA:
+                img["scale"] = None
+                continue
+            temp = self.temperatures(batch_id, name)
+            stem = os.path.splitext(secure_filename(name))[0]
+            self.storage.write_bytes(f"{rdir}/{stem}_thermal.jpg", annotate.to_jpeg_bytes(
+                palette_mod.render(temp, palette, lo=lo, hi=hi)))
+            img["scale"] = palette_mod.legend(temp, palette, lo, hi)
+        self.storage.write_json(f"{rdir}/thermal_analysis.json", analysis)
+        self.regenerate_labeled_images(batch_id, self.get_labels(batch_id), analysis)
+
+        try:                                               # a report made earlier shows the same pictures: keep its scale bars true
+            report = self.get_report(batch_id)
+            scales = {i["image_name"]: i.get("scale") for i in images}
+            for im in report.get("images", []):
+                if im.get("image_name") in scales:
+                    im["scale"] = scales[im["image_name"]]
+            self.save_report(batch_id, report)
+        except StorageNotFound:
+            pass
+        return look
 
     # ------------------------------------------------------------------ labels & notes
     def get_labels(self, batch_id: str) -> Dict:
@@ -352,6 +433,7 @@ class BatchService:
         analysis = self.get_analysis(batch_id)
         labels = self.get_labels(batch_id)
         saved = {s["spot_id"]: s for s in labels.get("spots", [])}
+        look = self.look(batch_id, analysis)
         # Automatic points arrive pre-labelled "Window" with the next free number (Wi1, Wi2, ...);
         # the operator changes any that are really a Door, Window, etc. Saved labels always win.
         next_number = max([int(m["spot_number"]) for m in labels.get("spots", []) if m.get("spot_number")] or [0]) + 1
@@ -378,12 +460,13 @@ class BatchService:
             for sp in spots:                    # what the report would say if the comment is left alone
                 sp["auto_comment"] = self.reporter.auto_comment(sp.get("type"), sp.get("temperature"),
                                                                 sp.get("excess"), sp["severity"])
-            picture = self.ensure_base(batch_id, name)
+            picture = self.ensure_base(batch_id, name, look)
             images.append({"image_name": name, "shape": img["shape"], "stats": img.get("stats", {}),
                            "image_note": (labels.get("image_notes") or {}).get(name, ""),
-                           "picture": picture, "scale": self.image_scale(batch_id, img),
+                           "picture": picture, "scale": self.image_scale(batch_id, img, look),
                            "spots": spots})
         return {"batch_id": batch_id, "name": self.batch_name(batch_id), "images": images,
+                "look": look, "data_range": self.data_range(analysis),
                 "sensitivity": analysis.get("sensitivity", self.sensitivity),
                 "general_notes": labels.get("general_notes", ""),
                 "property_address": labels.get("property_address", ""),
@@ -465,7 +548,7 @@ class BatchService:
 
     def regenerate_labeled_images(self, batch_id: str, labels: Dict, analysis: Dict) -> None:
         """Redraw each *_labeled.jpg with every point (auto + manual) and its type/number."""
-        rdir, idir = self.rdir(batch_id), self.idir(batch_id)
+        rdir, look = self.rdir(batch_id), self.look(batch_id, analysis)
         by_image: Dict[str, List[Dict]] = {}
         for s in labels.get("spots", []):
             by_image.setdefault(s["image_name"], []).append(s)
@@ -473,7 +556,7 @@ class BatchService:
             name = img["image_name"]
             spots = by_image.get(name, img.get("hot_spots", []))
             stem = os.path.splitext(name)[0]
-            self.storage.write_bytes(f"{rdir}/{stem}_labeled.jpg", self._draw_labeled(batch_id, img, spots))
+            self.storage.write_bytes(f"{rdir}/{stem}_labeled.jpg", self._draw_labeled(batch_id, img, spots, look))
 
     def redetect(self, batch_id: str, sensitivity: str) -> Dict:
         """Choose automatic points again at another sensitivity (fewer or more points).

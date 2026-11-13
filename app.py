@@ -36,6 +36,7 @@ from heat_loss_reporter import HeatLossReporter
 from services import BatchError, BatchService, new_batch_id, valid_batch_id
 from settings import load_settings
 from wake import Waker
+import palette as palette_mod
 from vocab import (SENSITIVITY_LABELS, SENSITIVITY_ORDER, SPOT_ABBR, severity_legend)
 from storage import (PrefixedStorage, StorageBackend, StorageError, StorageNotFound,
                      create_storage)
@@ -183,8 +184,10 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
             data = storage.read_bytes(path)
         except StorageNotFound:
             abort(404)
-        return send_file(io.BytesIO(data), mimetype=REPORT_FILE_TYPES[ext],
+        resp = send_file(io.BytesIO(data), mimetype=REPORT_FILE_TYPES[ext],
                          as_attachment=as_attachment, download_name=filename)
+        resp.headers["Cache-Control"] = "private, no-cache"     # pictures are redrawn in place: never show a stale one
+        return resp
 
     @app.errorhandler(BatchError)
     def _batch_error(exc):
@@ -456,7 +459,7 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
                                state=service.build_edit_state(batch_id),
                                spot_types=reporter.spot_types, abbr=SPOT_ABBR,
                                options=reporter.options_by_type(), severities=severity_legend(),
-                               sensitivities=sensitivity_choices)
+                               sensitivities=sensitivity_choices, palettes=palette_mod.choices())
 
     @app.route("/label_hotspots/<batch_id>")
     def label_hotspots_legacy(batch_id):
@@ -486,6 +489,17 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         out = service.redetect(batch_id, str(body.get("sensitivity", "")))
         audit("redetect", batch_id, sensitivity=out["sensitivity"], points=out["points"])
         return jsonify({"success": True, **out})
+
+    @app.route("/look/<batch_id>", methods=["POST"])
+    def set_look(batch_id):
+        """Change how the batch's pictures are coloured: style and temperature range."""
+        batch_or_404(batch_id)
+        body = request.get_json(silent=True) or {}
+        look = service.set_look(batch_id, body.get("palette"), str(body.get("mode") or "auto"),
+                                body.get("lo"), body.get("hi"))
+        audit("set_look", batch_id, palette=look["palette"], scale=look["mode"],
+              **({"lo": look["lo"], "hi": look["hi"]} if look["lo"] is not None else {}))
+        return jsonify({"success": True, "look": look})
 
     @app.route("/save_labels/<batch_id>", methods=["POST"])
     def save_labels(batch_id):

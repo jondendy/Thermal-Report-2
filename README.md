@@ -40,6 +40,15 @@ all common kinds of colour blindness (no green/red). Each picture has a scale ba
 range. Marker colours use the same scale. `PALETTE` can be `cividis`, `grey`, or `camera` (keep the camera's own
 picture). Priority names are Low / Medium / High / Very high.
 
+**Changing the look of one batch.** `PALETTE` is only the starting style. On the points page, *Picture colours*
+switches that batch to `inferno`, `ironbow`, `cividis`, `grey` or *As it came off the camera*, and
+*Temperature scale* chooses what the colours cover: *Automatic for each picture* (the default), *Same scale on
+every picture* (one range worked out from the whole batch, so a colour means the same temperature throughout),
+or *Set by hand* (from/to in degrees C). A wider scale calms a picture that looks blotchy; a narrower one brings
+out small differences. *Apply colours* redraws every picture in the batch, with its scale bar, on the points
+page and in the report. Points, notes and temperatures are not changed. The camera's own picture cannot be
+re-scaled, because its colours are fixed in the file.
+
 ## How warm areas are found
 
 An area is flagged when it is clearly warmer than **the building surface in the same picture**:

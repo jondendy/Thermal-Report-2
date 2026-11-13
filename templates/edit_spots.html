@@ -84,6 +84,23 @@
             <span class="hint" style="margin:0;">Choose Fewer if there are too many points, More if some are missed. Points you added by clicking, and all notes, are kept.</span>
         </div>
 
+        <div class="detect" id="lookRow">
+            <label class="field" for="lookPalette" style="margin:0;">Picture colours</label>
+            <select id="lookPalette">{% for p in palettes %}<option value="{{ p.key }}">{{ p.label }}</option>{% endfor %}</select>
+            <label class="field" for="lookMode" style="margin:0;">Temperature scale</label>
+            <select id="lookMode">
+                <option value="auto">Automatic for each picture</option>
+                <option value="batch">Same scale on every picture</option>
+                <option value="custom">Set by hand</option>
+            </select>
+            <span id="lookCustom" style="display:none; white-space:nowrap;">
+                <label for="lookLo">from</label> <input type="number" id="lookLo" step="0.5" style="width:5.5em;"> &deg;C
+                <label for="lookHi">to</label> <input type="number" id="lookHi" step="0.5" style="width:5.5em;"> &deg;C
+            </span>
+            <button class="btn btn-primary btn-small" onclick="applyLook()">Apply colours</button>
+            <span class="hint" style="margin:0;" id="lookHint"></span>
+        </div>
+
         <div class="stats">
             <div class="stat"><span class="stat-label">Images</span><span class="stat-value" id="imgCount">0</span></div>
             <div class="stat"><span class="stat-label">Points</span><span class="stat-value" id="totalSpots">0</span></div>
@@ -104,6 +121,7 @@
 
     <script>
         const BATCH = {{ batch_id|tojson }};
+        const PAGE_LOADED = Date.now();
         const STATE = {{ state|tojson }};
         const TYPES = {{ spot_types|tojson }};
         const ABBR = {{ abbr|tojson }};
@@ -252,7 +270,7 @@
                 el('small', { text: 'click the picture to add a point' }));
             const src = img.picture ? '/download/' + encodeURIComponent(BATCH) + '/' + encodeURIComponent(img.picture)
                                     : '/batch_image/' + encodeURIComponent(BATCH) + '/' + encodeURIComponent(img.image_name);
-            const pic = el('img', { src: src, alt: img.image_name, draggable: 'false' });
+            const pic = el('img', { src: src + '?v=' + PAGE_LOADED, alt: img.image_name, draggable: 'false' });
             const wrap = el('div', { class: 'image-wrap' }, pic);
             let scale = null;
             if (img.scale) {
@@ -332,6 +350,47 @@
             } catch (e) { status('Error: ' + e.message, 'error'); }
         }
 
+        // ---- picture colours: style and temperature range for every picture in the batch
+        const lookPalette = document.getElementById('lookPalette'), lookMode = document.getElementById('lookMode');
+        const lookLo = document.getElementById('lookLo'), lookHi = document.getElementById('lookHi');
+        function lookControls() {
+            const camera = lookPalette.value === 'camera';
+            lookMode.disabled = camera;                           // the camera's own picture cannot be re-scaled
+            document.getElementById('lookCustom').style.display = (!camera && lookMode.value === 'custom') ? '' : 'none';
+            const r = STATE.data_range;
+            document.getElementById('lookHint').textContent = camera
+                ? 'Shows each picture exactly as the camera saved it. The temperature scale cannot be changed for this style.'
+                : (r ? `Readings in this batch run from ${r.lo}°C to ${r.hi}°C. ` : '') +
+                  'A wider scale calms a picture that looks blotchy; a narrower one brings out small differences. Points and temperatures do not change.';
+        }
+        lookPalette.addEventListener('change', lookControls);
+        lookMode.addEventListener('change', () => {
+            if (lookMode.value === 'custom' && lookLo.value === '' && lookHi.value === '') {    // start from what is shown now
+                const scales = STATE.images.map(i => i.scale).filter(Boolean);
+                if (scales.length) {
+                    lookLo.value = Math.floor(Math.min(...scales.map(x => x.lo)));
+                    lookHi.value = Math.ceil(Math.max(...scales.map(x => x.hi)));
+                }
+            }
+            lookControls();
+        });
+        async function applyLook() {
+            const body = { palette: lookPalette.value, mode: lookMode.value };
+            if (body.mode === 'custom') {
+                body.lo = parseFloat(lookLo.value); body.hi = parseFloat(lookHi.value);
+                if (!isFinite(body.lo) || !isFinite(body.hi) || body.hi <= body.lo) {
+                    status('Give the scale a lower and a higher temperature.', 'error'); return;
+                }
+            }
+            if (!(await saveAll())) return;                       // keep anything typed on this page
+            status('Redrawing the pictures...', '');
+            try {
+                const r = await fetch('/look/' + encodeURIComponent(BATCH), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const d = await r.json(); if (!r.ok || !d.success) throw new Error(d.error || 'failed');
+                window.location.reload();
+            } catch (e) { status('Error: ' + e.message, 'error'); }
+        }
+
         async function generateReport() {
             if (!(await saveAll())) return;
             status('Generating report...', '');
@@ -351,6 +410,10 @@
         document.getElementById('inspector').value = STATE.inspector_name || '';
         document.getElementById('generalNotes').value = STATE.general_notes || '';
         document.getElementById('sens').value = STATE.sensitivity;
+        lookPalette.value = STATE.look.palette;
+        lookMode.value = STATE.look.mode;
+        if (STATE.look.lo !== null && STATE.look.hi !== null) { lookLo.value = STATE.look.lo; lookHi.value = STATE.look.hi; }
+        lookControls();
         const grid = document.getElementById('grid');
         STATE.images.forEach(i => grid.appendChild(buildPanel(i)));
         stats();
