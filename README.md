@@ -40,6 +40,15 @@ all common kinds of colour blindness (no green/red). Each picture has a scale ba
 range. Marker colours use the same scale. `PALETTE` can be `cividis`, `grey`, or `camera` (keep the camera's own
 picture). Priority names are Low / Medium / High / Very high.
 
+**Changing the look of one batch.** `PALETTE` is only the starting style. On the points page, *Picture colours*
+switches that batch to `inferno`, `ironbow`, `cividis`, `grey` or *As it came off the camera*, and
+*Temperature scale* chooses what the colours cover: *Automatic for each picture* (the default), *Same scale on
+every picture* (one range worked out from the whole batch, so a colour means the same temperature throughout),
+or *Set by hand* (from/to in degrees C). A wider scale calms a picture that looks blotchy; a narrower one brings
+out small differences. *Apply colours* redraws every picture in the batch, with its scale bar, on the points
+page and in the report. Points, notes and temperatures are not changed. The camera's own picture cannot be
+re-scaled, because its colours are fixed in the file.
+
 ## How warm areas are found
 
 An area is flagged when it is clearly warmer than **the building surface in the same picture**:
@@ -113,6 +122,15 @@ Select Images / Process Batch:
 * **Select from drive** shows thumbnails, newest first. Tick up to the batch size and press *Use selected*;
   they replace any local selection and are the next batch when you press **Process Batch**.
 
+**Folders.** Type a name in *Drive folder* (usually the property address) before *Upload to drive* and the
+pictures go into `<INBOX_ROOT>/<group>/<folder>/`. *Select from drive* shows the folders as buttons; open one,
+*Tick all* and *Use selected*. Folders are one level deep; a folder disappears when its last picture is deleted.
+
+**Batch names.** A batch made from a drive folder takes the folder's name, and the folder name is also filled in
+as the property address on the points page. Any batch can be named in the *Batch name* box or with *Rename* on
+the home page. The day the pictures were taken (from the camera's record in each file, else the file's date)
+is put at the start of the general survey notes, e.g. `Survey pictures taken: 5 November 2026.`
+
 Pictures stay on the drive after processing unless `INBOX_DELETE_AFTER_PROCESS=true`. Run `cleanup_inbox.py`
 daily to remove anything older than `INBOX_KEEP_DAYS` (30). If the drive is asleep and Wake-on-LAN is set up
 the page wakes it and waits; the web server never hangs on an unmounted share.
@@ -123,6 +141,14 @@ Mount the share so a sleeping NAS does not stop boot (CIFS example for `/etc/fst
 
 Create the marker file once (`touch /mnt/synology/.thermal-mounted`) and set `NAS_MARKER` to its name.
 Clean-up as a cron line: `30 3 * * * cd /path/to/app && venv/bin/python cleanup_inbox.py`
+
+## Logging out
+
+When the site is reached through Cloudflare Access, every page has a **Log out** button (in the group bar, or
+at the top right when groups are not used). It forgets the chosen group and then sends the browser to
+Cloudflare's own log-out address, which ends that person's login for every site behind the same Cloudflare
+login (the live and test sites share one). The next visit asks for the email and one-time PIN again. The button
+is not shown on local trials, where there is no login, and is not printed on reports.
 
 ## Tests
 
