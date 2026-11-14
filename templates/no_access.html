@@ -11,5 +11,7 @@
     <h1>You are signed in, but not set up yet</h1>
     <p>You are signed in as <strong>{{ email }}</strong>, but this address has not been added to a survey group.</p>
     <p>Ask the organiser of your group to add it, or to check that they used exactly this email address.</p>
+    {% if can_logout %}<p>Signed in with the wrong address? Log out, then sign in again with the right one.</p>
+    <form method="post" action="/logout"><button type="submit" style="padding:8px 16px; font-size:14px; cursor:pointer;">Log out</button></form>{% endif %}
 </div>
 </body></html>

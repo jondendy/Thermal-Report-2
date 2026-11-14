@@ -132,6 +132,10 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         if not email:
             return Response("Sign-in required. Please open this site through its normal address.", 401)
         g.user, g.orgs = email, directory.for_user(email)
+        if request.endpoint == "logout":                    # anyone signed in may log out, set up or not
+            slug = session.get("org")
+            g.ctx = context_for(slug) if slug in [o.slug for o in g.orgs] else None
+            return
         if not g.orgs:
             logger.warning("Refused %s: not a member of any group", email)
             return render_template("no_access.html", email=email), 403
@@ -149,6 +153,24 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
     @app.context_processor
     def test_banner():
         return {"test_banner": settings.banner_text}
+
+    def behind_access() -> bool:
+        """True when this request came through the Cloudflare login (so there is something to log out of)."""
+        return bool(request.headers.get("Cf-Access-Jwt-Assertion") or request.cookies.get("CF_Authorization"))
+
+    @app.context_processor
+    def logout_button():
+        return {"can_logout": behind_access()}
+
+    @app.route("/logout", methods=["POST"])
+    def logout():
+        """Forget the chosen group, then end the Cloudflare login. Cloudflare's own log-out address on
+        this site ends the person's session for every site behind the same login."""
+        audit("logout")
+        session.clear()
+        if behind_access():
+            return redirect("/cdn-cgi/access/logout")
+        return redirect(url_for("index"))                   # local trial: there is no login to end
 
     @app.context_processor
     def banner():

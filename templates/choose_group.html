@@ -21,5 +21,6 @@
         </select>
         <button type="submit">Continue</button>
     </form>
+    {% if can_logout %}<form method="post" action="/logout" style="margin-top:18px;"><button type="submit" style="background:none; border:none; color:#5d6570; text-decoration:underline; cursor:pointer; font-size:13px; padding:0;">Log out</button></form>{% endif %}
 </div>
 </body></html>
