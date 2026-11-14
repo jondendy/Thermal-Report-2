@@ -29,7 +29,7 @@ import io
 
 from audit import AuditLog
 from auth import build_identity
-from inbox import Inbox, InboxError
+from inbox import REASONS as DRIVE_REASONS, Inbox, InboxError
 from orgs import Org, OrgDirectory
 
 from heat_loss_reporter import HeatLossReporter
@@ -38,6 +38,7 @@ from settings import load_settings
 from wake import Waker
 import palette as palette_mod
 from vocab import (SENSITIVITY_LABELS, SENSITIVITY_ORDER, SPOT_ABBR, severity_legend)
+from warm_areas import SEVERITY_STEPS
 from storage import (PrefixedStorage, StorageBackend, StorageError, StorageNotFound,
                      create_storage)
 
@@ -255,7 +256,16 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
 
     @app.route("/info")
     def info():
-        return render_template("info.html")
+        steps, upper = {}, None                             # "8 C or more", "4 to 8 C", ... from the real thresholds
+        for limit, key in SEVERITY_STEPS:
+            steps[key] = f"{limit:g}\u00b0C or more" if upper is None else f"{limit:g} to {upper:g}\u00b0C"
+            upper = limit
+        steps["low"] = f"under {upper:g}\u00b0C"
+        return render_template("info.html", batch_size=settings.batch_size, drive_enabled=g.ctx.inbox is not None,
+                               delete_after=settings.inbox_delete_after, keep_days=settings.inbox_keep_days,
+                               sensitivities=sensitivity_choices, palettes=palette_mod.choices(),
+                               severities=severity_legend(), steps=steps, types=reporter.spot_types,
+                               abbr=SPOT_ABBR, groups_on=directory is not None, org_name=g.ctx.org_name)
 
     @app.route("/help")
     def help_page():
@@ -286,8 +296,9 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
             return jsonify({"error": "Choose pictures from your computer or from the drive, not both"}), 400
         if drive_names:                                  # pictures already parked on the drive
             box = g.ctx.inbox
-            if box is None or not box.available():
-                return jsonify({"error": "The drive is not available right now"}), 503
+            why = box.check() if box is not None else "no_folder"
+            if why != "ok":
+                return jsonify({"error": DRIVE_REASONS[why], "reason": why}), 503
             if len(drive_names) > settings.batch_size:
                 return jsonify({"error": f"Maximum {settings.batch_size} images per batch"}), 400
             try:
@@ -355,8 +366,9 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         box = g.ctx.inbox
         if box is None:
             return None, (jsonify({"error": "No drive is set up"}), 404)
-        if not box.available():
-            return None, (jsonify({"error": "The drive is not available right now", "asleep": True}), 503)
+        why = box.check()
+        if why != "ok":
+            return None, (jsonify({"error": DRIVE_REASONS[why], "reason": why, "asleep": why == "asleep"}), 503)
         return box, None
 
     @app.route("/drive/status")
@@ -364,7 +376,9 @@ def create_app(storage: Optional[StorageBackend] = None, settings=None,
         box = g.ctx.inbox
         if box is None:
             return jsonify({"enabled": False, "available": False, "wake_configured": False})
-        return jsonify({"enabled": True, "available": box.available(), "wake_configured": waker.configured})
+        why = box.check()
+        return jsonify({"enabled": True, "available": why == "ok", "reason": why, "message": DRIVE_REASONS[why],
+                        "wake_configured": waker.configured})
 
     def drive_folder_arg(box, value):
         """The folder named in a request, cleaned; (None, error response) if it is not acceptable."""

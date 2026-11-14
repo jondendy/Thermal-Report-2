@@ -27,6 +27,17 @@ FOLDER_CHARS = " -_,.'()&"          # besides letters and digits
 THUMB = (240, 180)
 
 
+# why the drive cannot be used, in words for the person at the screen (no server paths)
+REASONS = {
+    "ok": "",
+    "asleep": "The drive is switched off or asleep.",
+    "no_folder": "The drive's folder is missing on the server. Ask the organiser to check how the drive is connected.",
+    "not_mounted": "The drive is switched on but is not connected to the server. Ask the organiser to check the mount.",
+    "no_permission": "The drive is connected, but this site is not allowed to save to it. Ask the organiser to check its permissions.",
+    "slow": "The drive did not answer in time. Try again in a moment.",
+}
+
+
 class InboxError(Exception):
     """Something the person can fix (bad name, not a picture, drive full of files...)."""
 
@@ -57,18 +68,25 @@ class Inbox:
         self.marker, self.waker, self.wait, self.max_files = marker.strip(), waker, wait, max_files
 
     # ------------------------------------------------------------------ is it there?
-    def available(self) -> bool:
-        """True when the drive can be used right now. Never raises and never blocks for long."""
+    def check(self) -> str:
+        """'ok' when the drive can be used right now, else which step failed (a key of REASONS).
+        Never raises and never blocks for long."""
         if self.waker is not None and self.waker.configured and not self.waker.status()["up"]:
-            return False                               # asleep: do not even touch the folder
-        def check():
+            return "asleep"                            # do not even touch the folder
+        def look():
             if not os.path.isdir(self.root):
-                return False
+                return "no_folder"
             if self.marker and not os.path.exists(os.path.join(self.root, self.marker)):
-                return False                           # the share is not mounted (we would be writing to the bare mount point)
-            os.makedirs(self.folder, exist_ok=True)
-            return True
-        return bool(_within(self.wait, check, default=False))
+                return "not_mounted"                   # we would be writing to the bare mount point
+            try:
+                os.makedirs(self.folder, exist_ok=True)
+            except OSError:
+                return "no_permission"
+            return "ok" if os.access(self.folder, os.W_OK | os.X_OK) else "no_permission"
+        return _within(self.wait, look, default="slow")
+
+    def available(self) -> bool:
+        return self.check() == "ok"
 
     # ------------------------------------------------------------------ names
     def _name(self, name: str) -> str:

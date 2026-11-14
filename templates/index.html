@@ -65,7 +65,6 @@
     <nav style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
     <a href="/" style="margin-right: 20px; color: #667eea; text-decoration: none;">🏠 Home</a>
     <a href="/info" style="margin-right: 20px; color: #667eea; text-decoration: none;">ℹ️ User Guide</a>
-    <a href="/api/batches" style="margin-right: 20px; color: #667eea; text-decoration: none;">📊 API</a>
 </nav>
 
     <div class="container">
@@ -326,15 +325,24 @@
         async function driveReady(report) {
             let st = await (await fetch('/drive/status')).json();
             if (st.available) return true;
-            if (!st.wake_configured) { report('The drive is not available right now.'); return false; }
-            report('Waking the drive - this can take a minute or two...');
-            await fetch('/wake_storage', { method: 'POST' }).catch(() => {});
+            const why = s => s.message || 'The drive is not available right now.';
+            const waiting = s => s.reason === 'asleep' || s.reason === 'slow';   // may come right by itself
+            if (st.reason === 'asleep' && !st.wake_configured) { report(why(st)); return false; }
+            if (st.reason === 'asleep') {
+                report('Waking the drive - this can take a minute or two...');
+                await fetch('/wake_storage', { method: 'POST' }).catch(() => {});
+            } else {
+                report('Connecting to the drive...');
+            }
+            let stuck = 0;                                        // a fault that waiting will not fix
             for (let i = 0; i < 40; i++) {
-                await sleep(5000);
+                await sleep(waiting(st) ? 5000 : 2000);
                 st = await (await fetch('/drive/status')).json();
                 if (st.available) return true;
+                stuck = waiting(st) ? 0 : stuck + 1;
+                if (stuck >= 3) { report(why(st)); return false; }
             }
-            report('The drive did not wake up. Try again in a few minutes.');
+            report(st.reason === 'asleep' ? 'The drive did not wake up. Try again in a few minutes.' : why(st));
             return false;
         }
 

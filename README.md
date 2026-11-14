@@ -142,6 +142,18 @@ Mount the share so a sleeping NAS does not stop boot (CIFS example for `/etc/fst
 Create the marker file once (`touch /mnt/synology/.thermal-mounted`) and set `NAS_MARKER` to its name.
 Clean-up as a cron line: `30 3 * * * cd /path/to/app && venv/bin/python cleanup_inbox.py`
 
+## The drive is not showing up
+
+Being able to ping the NAS only proves it is switched on. Before the app will use the drive it also needs
+file sharing answering on the NAS, the share mounted on the server, the marker file on the share, and
+permission to write there. Run the check on the server, in the app's folder, as the user the service runs as:
+
+    venv/bin/python check_drive.py
+
+It tests each of those in the order the app does, names the first one that fails and says what to do. It reads
+the same `.env` as the app and changes nothing (apart from creating the group's own folder on the drive, as the
+app does). On the web page, the drive buttons now also say which of these is wrong, in plain words.
+
 ## Logging out
 
 When the site is reached through Cloudflare Access, every page has a **Log out** button (in the group bar, or
