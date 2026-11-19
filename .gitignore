@@ -18,3 +18,8 @@ __pycache__/
 .pytest_cache/
 venv/
 .venv/
+
+# secrets and backups: never commit the real settings files
+*.env
+!example.env
+!env.example
