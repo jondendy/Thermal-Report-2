@@ -96,3 +96,16 @@ def test_pictures_are_grouped_four_to_a_sheet():
     labels = {"spots": [spot(f"{i}.jpg", "Wall", i, 20.0, "low") for i in range(1, 7)]}
     rep = r.build_report("b1", labels)
     assert rep["images_per_sheet"] == 4 and len(rep["images"]) == 6
+
+
+def test_a_group_can_add_its_own_closing_page_entries(tmp_path):
+    f = tmp_path / "c.json"
+    f.write_text(json.dumps({"extra_measures": [{"title": "Local help", "text": "x",
+                                                 "links": [{"label": "bad", "url": "http://insecure.example"},
+                                                           {"label": "ok", "url": "https://ok.example/"}]}]}))
+    r = HeatLossReporter(content_file=str(f))
+    titles = [m["title"] for m in r.content("G")["general_measures"]]
+    assert titles[-1] == "Local help" and "condensing" in titles[0].lower()          # standard entries first, then the group's
+    assert [l["label"] for l in r.content("G")["general_measures"][-1]["links"]] == ["ok"]    # only https links survive
+    assert "extra_measures" not in r.content("G")
+    assert "Local help" not in [m["title"] for m in HeatLossReporter().content("G")["general_measures"]]

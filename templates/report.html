@@ -31,10 +31,9 @@
         .error-message { background: #ffebee; color: #c62828; padding: 15px; border-radius: 4px; margin-top: 10px; }
     </style>
 </head>
-<body><nav style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+<body>{% include "_banner.html" %}<nav style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
     <a href="/" style="margin-right: 20px; color: #667eea; text-decoration: none;">🏠 Home</a>
     <a href="/info" style="margin-right: 20px; color: #667eea; text-decoration: none;">ℹ️ User Guide</a>
-    <a href="/api/batches" style="margin-right: 20px; color: #667eea; text-decoration: none;">📊 API</a>
 </nav>
 
     <div class="container">
@@ -43,7 +42,7 @@
         <div class="header">
             <h1>📊 Batch Report</h1>
             <div class="batch-info">
-                <strong>Batch ID:</strong> {{ batch_id }}<br>
+                {% if batch_name %}<strong>Batch name:</strong> {{ batch_name }}<br>{% endif %}<strong>Batch ID:</strong> {{ batch_id }}<br>
                 <strong>Processed:</strong> {{ report.timestamp[:19] if report.timestamp else 'N/A' }}
             </div>
         </div>

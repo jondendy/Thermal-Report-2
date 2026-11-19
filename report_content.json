@@ -1,5 +1,5 @@
 {
-  "_help": "Edit this file to change the fixed wording of every report. {org} is replaced with ORG_NAME (or 'your local energy group'). Links must start with https://. Please check the links before use - websites reorganise.",
+  "_help": "Edit this file to change the fixed wording of every report. {org} is replaced with ORG_NAME (or 'your local energy group'). Links must start with https://. Please check the links before use - websites reorganise. A group can add its own entries after the standard ones with \"extra_measures\" (same layout as general_measures).",
   "about_title": "About this survey",
   "about": [
     "This survey was carried out by {org} using a thermal imaging camera. The camera shows surface temperatures, which helps to reveal where heat is escaping from a building: missing or damaged insulation, draughts, thermal bridges and poorly performing windows and doors.",
@@ -18,7 +18,10 @@
       "title": "Get the most from a condensing boiler",
       "text": "A condensing boiler is most efficient when its return water is cool enough for the flue gases to condense. Many are installed with the flow temperature set higher than they need. Ask your installer whether the flow temperature can be turned down (60 degrees C or lower often works), use the room thermostat and radiator valves to control the heat, and have the boiler serviced every year.",
       "links": [
-        {"label": "Energy Saving Trust", "url": "https://energysavingtrust.org.uk/"}
+        {
+          "label": "Energy Saving Trust",
+          "url": "https://energysavingtrust.org.uk/"
+        }
       ]
     },
     {
@@ -37,26 +40,35 @@
       "title": "Solar panels, batteries and heat pumps",
       "text": "Independent advice is available before you commit. Get several quotes, and use an installer certified under the Microgeneration Certification Scheme where you want to claim a government grant or export payments.",
       "links": [
-        {"label": "Energy Saving Trust", "url": "https://energysavingtrust.org.uk/"},
-        {"label": "Microgeneration Certification Scheme (find an installer)", "url": "https://mcscertified.com/"},
-        {"label": "GOV.UK: improve your home's energy efficiency", "url": "https://www.gov.uk/improve-energy-efficiency"}
+        {
+          "label": "Energy Saving Trust",
+          "url": "https://energysavingtrust.org.uk/"
+        },
+        {
+          "label": "Microgeneration Certification Scheme (find an installer)",
+          "url": "https://mcscertified.com/"
+        },
+        {
+          "label": "GOV.UK: improve your home's energy efficiency",
+          "url": "https://www.gov.uk/improve-energy-efficiency"
+        }
       ]
     },
     {
       "title": "Help with bills and your energy supplier",
       "text": "If your energy bills are a worry, free impartial advice is available, and your supplier can often fit a smart meter and explain your tariff.",
       "links": [
-        {"label": "Citizens Advice: energy", "url": "https://www.citizensadvice.org.uk/consumer/energy/"},
-        {"label": "Ofgem", "url": "https://www.ofgem.gov.uk/"}
-      ]
-    },
-    {
-      "title": "Local help",
-      "text": "Local community groups can offer advice, loans of equipment and group buying schemes.",
-      "links": [
-        {"label": "Sustainable Chesham", "url": "https://sustainablechesham.org.uk/"}
+        {
+          "label": "Citizens Advice: energy",
+          "url": "https://www.citizensadvice.org.uk/consumer/energy/"
+        },
+        {
+          "label": "Ofgem",
+          "url": "https://www.ofgem.gov.uk/"
+        }
       ]
     }
   ],
-  "footer": "Prepared by {org}. This report is advisory only. Savings figures are typical estimates for UK homes and will vary."
+  "footer": "Prepared by {org}. This report is advisory only. Savings figures are typical estimates for UK homes and will vary.",
+  "extra_measures": []
 }

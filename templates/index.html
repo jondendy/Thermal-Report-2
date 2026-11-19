@@ -41,13 +41,30 @@
         .message { padding: 15px; border-radius: 4px; margin: 15px 0; }
         .error { background: #ffebee; color: #c62828; }
         .success { background: #e8f5e9; color: #2e7d32; }
+        .drive-row { margin-top: 12px; }
+        .drive-btn { background: #5a6b7b; }
+        .drive-btn:hover { background: #475563; }
+        .drive-note { color: #555; margin-top: 8px; font-size: 14px; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 50; align-items: center; justify-content: center; padding: 16px; }
+        .modal.open { display: flex; }
+        .modal-box { background: white; border-radius: 8px; padding: 20px; max-width: 900px; width: 100%; max-height: 90vh; overflow: auto; }
+        .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+        .thumb { border: 3px solid #ddd; border-radius: 6px; cursor: pointer; overflow: hidden; background: #fafafa; }
+        .thumb.on { border-color: #FF9800; }
+        .thumb img { width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover; }
+        .thumb span { display: block; font-size: 12px; padding: 4px 6px; word-break: break-all; }
+        .text-in { padding: 8px 10px; border: 1px solid #bbb; border-radius: 4px; font-size: 15px; width: min(100%, 360px); }
+        .folders { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+        .folder { border: 1px solid #b9c2cb; background: #f2f5f8; border-radius: 16px; padding: 6px 12px; cursor: pointer; font-size: 14px; }
+        .folder.on { background: #3b6ea5; color: white; border-color: #3b6ea5; }
+        .batch-id { font-size: 12px; color: #888; font-weight: normal; }
+        .link-btn { background: none; border: none; color: #3b6ea5; cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0 0 0 8px; }
     </style>
 </head>
-<body>
+<body>{% include "_banner.html" %}
     <nav style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
     <a href="/" style="margin-right: 20px; color: #667eea; text-decoration: none;">🏠 Home</a>
     <a href="/info" style="margin-right: 20px; color: #667eea; text-decoration: none;">ℹ️ User Guide</a>
-    <a href="/api/batches" style="margin-right: 20px; color: #667eea; text-decoration: none;">📊 API</a>
 </nav>
 
     <div class="container">
@@ -62,6 +79,23 @@
             <button class="upload-btn" onclick="document.getElementById('fileInput').click()">Select Images</button>
             <button class="upload-btn process-btn" onclick="uploadFiles()" style="margin-left:10px;">Process Batch</button>
             <p style="margin-top:14px;">
+                <label for="batchName"><strong>Batch name</strong> (optional)</label><br>
+                <input type="text" id="batchName" class="text-in" maxlength="120" placeholder="e.g. 12 High Street" style="margin-top:4px;">
+            </p>
+            {% if drive_enabled %}
+            <div class="drive-row">
+                <p style="margin-bottom:10px;">
+                    <label for="driveFolder"><strong>Drive folder</strong> (optional - usually the property address)</label><br>
+                    <input type="text" id="driveFolder" class="text-in" maxlength="80" list="driveFolders" placeholder="e.g. 12 High Street" style="margin-top:4px;">
+                    <datalist id="driveFolders"></datalist>
+                </p>
+                <input type="file" id="driveInput" multiple accept=".jpg,.jpeg" style="display:none" />
+                <button class="upload-btn drive-btn" id="driveUploadBtn" onclick="driveUpload()">Upload to drive</button>
+                <button class="upload-btn drive-btn" onclick="openDrive()" style="margin-left:10px;">Select from drive</button>
+                <p class="drive-note" id="driveNote"></p>
+            </div>
+            {% endif %}
+            <p style="margin-top:14px;">
                 <label for="sensitivity"><strong>Points to mark automatically:</strong></label>
                 <select id="sensitivity" style="padding:6px; margin-left:6px;">
                     {% for s in sensitivities %}<option value="{{ s.key }}"{% if s.key == default_sensitivity %} selected{% endif %}>{{ s.label }}</option>{% endfor %}
@@ -74,13 +108,30 @@
             <div id="message"></div>
         </div>
 
+        {% if drive_enabled %}
+        <div class="modal" id="driveModal">
+            <div class="modal-box">
+                <h2>Pictures on the drive</h2>
+                <div class="folders" id="folderBar"></div>
+                <p id="driveStatus" class="drive-note"></p>
+                <div class="thumbs" id="thumbs"></div>
+                <button class="upload-btn drive-btn" onclick="tickAll()" style="margin-right:10px;">Tick all</button>
+                <button class="upload-btn process-btn" onclick="useDrive()">Use selected</button>
+                <button class="upload-btn btn-danger" onclick="deleteFromDrive()" style="margin-left:10px;background:#f44336;">Delete selected</button>
+                <button class="upload-btn drive-btn" onclick="closeDrive()" style="margin-left:10px;">Close</button>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="batches-section">
             <h2>Previous Batches</h2>
             {% if batches %}
                 {% for batch in batches %}
                 <div class="batch-card">
                     <div class="batch-header">
-                        <div class="batch-title"><a href="/edit_spots/{{ batch.batch_id }}" style="color: inherit; text-decoration: none;">{{ batch.batch_id }}</a><a href="/edit_spots/{{ batch.batch_id }}" style="text-decoration: none;"> &mdash; define points &amp; notes</a></div>
+                        <div class="batch-title"><a href="/edit_spots/{{ batch.batch_id }}" style="color: inherit; text-decoration: none;">{{ batch.name or batch.batch_id }}</a><a href="/edit_spots/{{ batch.batch_id }}" style="text-decoration: none;"> &mdash; define points &amp; notes</a>
+                            <button class="link-btn rename-btn" data-id="{{ batch.batch_id }}" data-name="{{ batch.name }}">Rename</button>
+                            {% if batch.name %}<div class="batch-id">{{ batch.batch_id }}</div>{% endif %}</div>
                         <div class="batch-date">{{ batch.timestamp[:19] if batch.timestamp else 'N/A' }}</div>
                     </div>
                     <div class="batch-stats">
@@ -107,7 +158,7 @@
                         <a href="/report/{{ batch.batch_id }}" class="btn btn-primary">Batch Data</a>
                         <a href="/edit_spots/{{ batch.batch_id }}" class="btn btn-primary">Points &amp; Notes</a>
                         <a href="/view_heat_loss_report/{{ batch.batch_id }}" class="btn btn-primary">Heat Loss Report</a>
-                        <button onclick="deleteBatch('{{ batch.batch_id }}')" class="btn btn-danger">Delete</button>
+                        <button class="btn btn-danger delete-btn" data-id="{{ batch.batch_id }}" data-name="{{ batch.name or batch.batch_id }}">Delete</button>
                     </div>
                 </div>
                 {% endfor %}
@@ -121,6 +172,11 @@
 
     <script>
         let selectedFiles = [];
+        let driveNames = [];                      // pictures chosen from the drive (used instead of local files)
+        let driveFolder = '';                     // the drive folder those pictures are in ('' = main folder)
+        const batchName = document.getElementById('batchName');
+        const MAX_IMAGES = {{ batch_size }};
+        const DRIVE_ON = {{ 'true' if drive_enabled else 'false' }};
         const dropZone = document.getElementById('dropZone');
         const fileInput = document.getElementById('fileInput');
         const fileList = document.getElementById('fileList');
@@ -157,12 +213,13 @@
         });
 
         function addFiles(files) {
+            if (driveNames.length) { driveNames = []; driveFolder = ''; }   // switching back to pictures from this computer
             files.forEach(file => {
                 if (file.type === 'image/jpeg' || file.name.toLowerCase().endsWith('.jpg')) {
-                    if (selectedFiles.length < 8) {
+                    if (selectedFiles.length < MAX_IMAGES) {
                         selectedFiles.push(file);
                     } else {
-                        showMessage('Maximum 8 images per batch', 'error');
+                        showMessage('Maximum ' + MAX_IMAGES + ' images per batch', 'error');
                     }
                 }
             });
@@ -171,15 +228,22 @@
 
         function updateFileList() {
             fileList.innerHTML = '';
-            selectedFiles.forEach((file, index) => {
+            const row = (label, onremove) => {
                 const div = document.createElement('div');
                 div.className = 'file-item';
-                div.innerHTML = `
-                    <span>${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</span>
-                    <span class="remove-file" onclick="removeFile(${index})">✕ Remove</span>
-                `;
+                const name = document.createElement('span');
+                name.textContent = label;                      // text only, so a file name can never inject markup
+                const rm = document.createElement('span');
+                rm.className = 'remove-file';
+                rm.textContent = '✕ Remove';
+                rm.addEventListener('click', onremove);
+                div.append(name, rm);
                 fileList.appendChild(div);
-            });
+            };
+            selectedFiles.forEach((file, index) =>
+                row(`${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`, () => removeFile(index)));
+            driveNames.forEach((n, index) =>
+                row(`${n} (from the drive${driveFolder ? ': ' + driveFolder : ''})`, () => { driveNames.splice(index, 1); updateFileList(); }));
         }
 
         function removeFile(index) {
@@ -195,13 +259,20 @@
         }
 
         async function uploadFiles() {
-            if (selectedFiles.length === 0) {
+            if (selectedFiles.length === 0 && driveNames.length === 0) {
                 showMessage('Please select images first', 'error');
                 return;
             }
 
             const formData = new FormData();
-            selectedFiles.forEach(file => formData.append('files[]', file));
+            if (driveNames.length) {
+                driveNames.forEach(n => formData.append('drive_files', n));
+                formData.append('drive_folder', driveFolder);
+            } else {
+                selectedFiles.forEach(file => formData.append('files[]', file));
+                formData.append('modified', JSON.stringify(selectedFiles.map(f => f.lastModified)));
+            }
+            formData.append('batch_name', batchName.value.trim());
             formData.append('sensitivity', document.getElementById('sensitivity').value);
 
             progress.style.display = 'block';
@@ -219,6 +290,9 @@
                     const result = await response.json();
                     showMessage(`Batch processed successfully! ${result.results.summary.total_images} images processed.`, 'success');
                     selectedFiles = [];
+                    driveNames = [];
+                    driveFolder = '';
+                    batchName.value = '';
                     updateFileList();
                     setTimeout(() => location.reload(), 2000);
                 } else {
@@ -232,8 +306,190 @@
             }
         }
 
-        async function deleteBatch(batchId) {
-            if (!confirm('Delete this batch? This cannot be undone.')) return;
+        // ------------------------------------------------------------------ the drive
+        const driveNote = document.getElementById('driveNote');
+        const folderBox = document.getElementById('driveFolder');
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        async function loadFolderNames() {              // suggestions for the "Drive folder" box
+            try {
+                const r = await fetch('/drive/list');
+                if (!r.ok) return;
+                const list = document.getElementById('driveFolders');
+                list.replaceChildren();
+                (await r.json()).folders.forEach(f => { const o = document.createElement('option'); o.value = f.name; list.appendChild(o); });
+            } catch (e) { /* the drive may be asleep: suggestions are optional */ }
+        }
+        function note(text) { if (driveNote) driveNote.textContent = text || ''; }
+
+        // true when the drive can be used; wakes it first when it is asleep and a wake-up is set up
+        async function driveReady(report) {
+            let st = await (await fetch('/drive/status')).json();
+            if (st.available) return true;
+            const why = s => s.message || 'The drive is not available right now.';
+            const waiting = s => s.reason === 'asleep' || s.reason === 'slow';   // may come right by itself
+            if (st.reason === 'asleep' && !st.wake_configured) { report(why(st)); return false; }
+            if (st.reason === 'asleep') {
+                report('Waking the drive - this can take a minute or two...');
+                await fetch('/wake_storage', { method: 'POST' }).catch(() => {});
+            } else {
+                report('Connecting to the drive...');
+            }
+            let stuck = 0;                                        // a fault that waiting will not fix
+            for (let i = 0; i < 40; i++) {
+                await sleep(waiting(st) ? 5000 : 2000);
+                st = await (await fetch('/drive/status')).json();
+                if (st.available) return true;
+                stuck = waiting(st) ? 0 : stuck + 1;
+                if (stuck >= 3) { report(why(st)); return false; }
+            }
+            report(st.reason === 'asleep' ? 'The drive did not wake up. Try again in a few minutes.' : why(st));
+            return false;
+        }
+
+        async function sendToDrive(files) {
+            let saved = 0, bad = [], where = '';
+            for (let i = 0; i < files.length; i += 10) {         // small chunks keep each request quick
+                const chunk = files.slice(i, i + 10);
+                const fd = new FormData();
+                chunk.forEach(f => fd.append('files[]', f));
+                fd.append('modified', JSON.stringify(chunk.map(f => f.lastModified)));
+                fd.append('folder', folderBox ? folderBox.value.trim() : '');
+                note(`Uploading ${Math.min(i + 10, files.length)} of ${files.length}...`);
+                const r = await fetch('/drive/upload', { method: 'POST', body: fd });
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok && !j.rejected) throw new Error(j.error || 'Upload failed');
+                if (j.folder !== undefined) where = j.folder;
+                saved += (j.saved || []).length;
+                bad = bad.concat(j.rejected || []);
+            }
+            return { saved, bad, where };
+        }
+
+        async function driveUpload() {
+            if (selectedFiles.length === 0) { document.getElementById('driveInput').click(); return; }
+            await doDriveUpload(selectedFiles.slice());
+        }
+        async function doDriveUpload(files) {
+            try {
+                if (!await driveReady(note)) return;
+                const { saved, bad, where } = await sendToDrive(files);
+                note(`${saved} picture(s) saved to the drive${where ? ' in "' + where + '"' : ''}.` + (bad.length ? ` ${bad.length} not saved (${bad[0].reason}).` : ''));
+                loadFolderNames();
+                if (files === selectedFiles || files.every(f => selectedFiles.includes(f))) { selectedFiles = []; updateFileList(); }
+            } catch (e) { note('Error: ' + e.message); }
+        }
+        if (DRIVE_ON) {
+            loadFolderNames();
+            document.getElementById('driveInput').addEventListener('change', e => {
+                const files = Array.from(e.target.files);
+                e.target.value = '';
+                if (files.length) doDriveUpload(files);
+            });
+        }
+
+        let driveFiles = [];
+        let openFolder = '';                                  // the folder the picker is showing
+        function closeDrive() { document.getElementById('driveModal').classList.remove('open'); }
+        async function openDrive() {
+            document.getElementById('driveModal').classList.add('open');
+            const status = document.getElementById('driveStatus');
+            document.getElementById('thumbs').replaceChildren();
+            document.getElementById('folderBar').replaceChildren();
+            if (!await driveReady(t => status.textContent = t)) return;
+            openFolder = folderBox.value.trim();              // start where the person last worked
+            await refreshDrive();
+        }
+        async function refreshDrive() {
+            const status = document.getElementById('driveStatus');
+            const box = document.getElementById('thumbs');
+            let r = await fetch('/drive/list?folder=' + encodeURIComponent(openFolder));
+            if (r.status === 400 && openFolder) { openFolder = ''; r = await fetch('/drive/list'); }
+            const j = await r.json();
+            if (!r.ok) { status.textContent = j.error || 'Could not read the drive'; return; }
+            openFolder = j.folder;
+            driveFiles = j.files;
+
+            const bar = document.getElementById('folderBar');
+            bar.replaceChildren();
+            const chip = (label, name) => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'folder' + (name === openFolder ? ' on' : '');
+                b.textContent = label;
+                b.addEventListener('click', () => { openFolder = name; refreshDrive(); });
+                bar.appendChild(b);
+            };
+            chip('Main folder', '');
+            j.folders.forEach(f => chip(`${f.name} (${f.count})`, f.name));
+
+            const here = openFolder ? `"${openFolder}"` : 'the main folder';
+            status.textContent = driveFiles.length ? `Tick up to ${MAX_IMAGES} pictures in ${here} (newest first).`
+                                                   : `No pictures in ${here} yet.`;
+            box.replaceChildren();
+            driveFiles.forEach(f => {
+                const d = document.createElement('div');
+                d.className = 'thumb';
+                d.dataset.name = f.name;
+                const img = document.createElement('img');
+                img.loading = 'lazy';
+                img.src = '/drive/thumb/' + encodeURIComponent(f.name) + '?folder=' + encodeURIComponent(openFolder);
+                img.alt = f.name;
+                const cap = document.createElement('span');
+                cap.textContent = f.name;
+                d.append(img, cap);
+                d.addEventListener('click', () => {
+                    if (!d.classList.contains('on') && box.querySelectorAll('.thumb.on').length >= MAX_IMAGES) {
+                        status.textContent = `Maximum ${MAX_IMAGES} pictures per batch.`; return;
+                    }
+                    d.classList.toggle('on');
+                });
+                box.appendChild(d);
+            });
+        }
+        const ticked = () => Array.from(document.querySelectorAll('#thumbs .thumb.on')).map(d => d.dataset.name);
+        function tickAll() {                                      // the first MAX_IMAGES pictures in this folder
+            const all = Array.from(document.querySelectorAll('#thumbs .thumb'));
+            const allOn = all.slice(0, MAX_IMAGES).every(d => d.classList.contains('on'));
+            all.forEach((d, i) => d.classList.toggle('on', !allOn && i < MAX_IMAGES));
+            if (all.length > MAX_IMAGES && !allOn)
+                document.getElementById('driveStatus').textContent = `Ticked the first ${MAX_IMAGES} of ${all.length} - a batch holds ${MAX_IMAGES}.`;
+        }
+        function useDrive() {
+            const names = ticked();
+            if (!names.length) { document.getElementById('driveStatus').textContent = 'Tick at least one picture.'; return; }
+            driveNames = names;
+            driveFolder = openFolder;
+            selectedFiles = [];                                   // the drive pictures are the next ones to process
+            if (driveFolder && !batchName.value.trim()) batchName.value = driveFolder;   // the folder names the batch
+            updateFileList();
+            closeDrive();
+            showMessage(`${names.length} picture(s) from the drive are ready - press Process Batch.`, 'success');
+        }
+        async function deleteFromDrive() {
+            const names = ticked();
+            if (!names.length) return;
+            if (!confirm(`Delete ${names.length} picture(s) from the drive? This cannot be undone.`)) return;
+            await fetch('/drive/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                           body: JSON.stringify({ names, folder: openFolder }) });
+            if (driveFolder === openFolder) driveNames = driveNames.filter(n => !names.includes(n));
+            updateFileList();
+            await refreshDrive();
+            loadFolderNames();
+        }
+
+        // ------------------------------------------------------------------ batches
+        document.querySelectorAll('.rename-btn').forEach(b => b.addEventListener('click', async () => {
+            const name = prompt('Name for this batch (leave empty to show its number again):', b.dataset.name || '');
+            if (name === null) return;
+            const r = await fetch('/rename/' + encodeURIComponent(b.dataset.id), { method: 'POST',
+                headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+            if (r.ok) location.reload(); else showMessage('Could not rename the batch', 'error');
+        }));
+        document.querySelectorAll('.delete-btn').forEach(b =>
+            b.addEventListener('click', () => deleteBatch(b.dataset.id, b.dataset.name)));
+
+        async function deleteBatch(batchId, label) {
+            if (!confirm(`Delete the batch "${label || batchId}"? This cannot be undone.`)) return;
 
             try {
                 const response = await fetch(`/delete/${batchId}`, { method: 'POST' });

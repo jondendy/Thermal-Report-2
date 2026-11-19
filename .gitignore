@@ -9,6 +9,8 @@ uploads/
 
 # Secrets / environment
 .env
+# Who belongs to which group (email addresses) - keep out of git; copy orgs.example/ to orgs/
+orgs/
 
 # Python
 __pycache__/
@@ -16,3 +18,8 @@ __pycache__/
 .pytest_cache/
 venv/
 .venv/
+
+# secrets and backups: never commit the real settings files
+*.env
+!example.env
+!env.example

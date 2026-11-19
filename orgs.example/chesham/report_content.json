@@ -1,0 +1,19 @@
+{
+  "_help": "Optional. Only the parts you put here replace the standard report wording (see ../../report_content.json for every part). {org} becomes the group's name. 'extra_measures' adds entries after the standard ones on the closing page.",
+  "about": [
+    "This survey was carried out by volunteers from {org} using a thermal imaging camera.",
+    "It is a guide to where to look, not a substitute for a full building survey."
+  ],
+  "extra_measures": [
+    {
+      "title": "Local help",
+      "text": "Local community groups can offer advice, loans of equipment and group buying schemes.",
+      "links": [
+        {
+          "label": "Sustainable Chesham",
+          "url": "https://sustainablechesham.org.uk/"
+        }
+      ]
+    }
+  ]
+}
